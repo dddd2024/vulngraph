@@ -1,0 +1,381 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>VulnGraph | 基于微调大模型与知识图谱的漏洞修复系统</title>
+  <style>
+    :root { color-scheme: dark; }
+    * { box-sizing: border-box; }
+    body {
+      margin:0;
+      font-family:"Microsoft YaHei","Segoe UI",sans-serif;
+      background:
+        radial-gradient(1200px 600px at 85% -10%, rgba(56,189,248,.16), transparent 55%),
+        radial-gradient(900px 500px at -10% 10%, rgba(37,99,235,.18), transparent 55%),
+        #070d1e;
+      color:#e9efff;
+    }
+    .wrap { max-width:1240px; margin:0 auto; padding:28px 24px 24px; }
+    .hero { margin-bottom:18px; }
+    .brandline {
+      display:flex;
+      align-items:center;
+      gap:12px;
+      margin-bottom:8px;
+      flex-wrap:wrap;
+    }
+    .brandmark {
+      font-size:42px;
+      font-weight:900;
+      line-height:1;
+      letter-spacing:.4px;
+      color:transparent;
+      background:linear-gradient(95deg, #8ec5ff 0%, #5b8dff 45%, #59d0ff 100%);
+      -webkit-background-clip:text;
+      background-clip:text;
+      text-shadow:0 10px 26px rgba(59,130,246,.24);
+    }
+    .brand {
+      display:inline-flex; align-items:center;
+      padding:8px 14px; border-radius:999px; border:1px solid #3d5fbb;
+      background:linear-gradient(90deg,rgba(37,99,235,.24),rgba(56,189,248,.16));
+      font-size:13px; letter-spacing:.3px; color:#cde3ff;
+      box-shadow: inset 0 0 0 1px rgba(255,255,255,.04), 0 8px 22px rgba(7,16,40,.38);
+    }
+    h1 { margin:0 0 10px; font-size:42px; line-height:1.12; letter-spacing:.2px; }
+    .sub { opacity:.9; margin-bottom:0; font-size:17px; color:#c2d5ff; }
+    .panel {
+      background:linear-gradient(180deg, rgba(20,31,62,.96), rgba(14,24,50,.96));
+      border:1px solid #2a3d72;
+      border-radius:14px;
+      padding:14px;
+      margin-bottom:14px;
+      box-shadow: 0 16px 40px rgba(3, 8, 22, .35), inset 0 0 0 1px rgba(255,255,255,.02);
+    }
+    .grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+    label { display:block; font-size:15px; margin-bottom:8px; opacity:.92; font-weight:600; }
+    textarea, input, select {
+      width:100%; border-radius:10px; border:1px solid #3a4d82;
+      background:#0a1125; color:#dbe8ff; padding:12px;
+      font-size:16px;
+    }
+    textarea { min-height:220px; resize:vertical; line-height:1.45; }
+    .row { display:flex; gap:10px; flex-wrap:wrap; margin-top:14px; }
+    button {
+      border:1px solid transparent;
+      border-radius:11px;
+      padding:12px 16px;
+      cursor:pointer;
+      background:#2563eb;
+      color:#fff;
+      font-weight:700;
+      font-size:15px;
+      transition: transform .12s ease, box-shadow .12s ease, border-color .12s ease, filter .12s ease;
+    }
+    button:hover { transform: translateY(-1px); filter: brightness(1.05); }
+    button:active { transform: translateY(0); }
+    button.alt {
+      background:linear-gradient(180deg, #44556f, #35455d);
+      border-color:#4f6585;
+    }
+    button.warn {
+      background:linear-gradient(180deg, #d97706, #b45309);
+      border-color:#da8a2c;
+    }
+    button.primary {
+      min-width:290px;
+      background:linear-gradient(180deg, #3a78ff, #2463eb);
+      box-shadow: 0 10px 24px rgba(37, 99, 235, .34);
+      border-color:#6fa0ff;
+    }
+    .action-row { align-items:stretch; }
+    .actions-secondary {
+      display:grid;
+      grid-template-columns:repeat(4, minmax(150px, 1fr));
+      gap:10px;
+      flex:1;
+      min-width:300px;
+    }
+    .actions-secondary button { width:100%; height:100%; }
+    .cards {
+      display:grid;
+      grid-template-columns:repeat(4,minmax(150px,1fr));
+      gap:12px;
+      margin-bottom:14px;
+    }
+    .card {
+      background:linear-gradient(180deg, #101a37, #0f1731);
+      border:1px solid #2a3e72;
+      border-radius:12px;
+      padding:12px;
+    }
+    .k { font-size:13px; opacity:.82; }
+    .v { font-size:24px; font-weight:800; margin-top:6px; line-height:1.2; word-break:break-word; }
+    pre {
+      background:#060d1d;
+      border:1px solid #2a3f74;
+      border-radius:12px;
+      padding:14px;
+      height:48vh;
+      overflow:auto;
+      color:#d4e3ff;
+      line-height:1.48;
+      font-size:14px;
+    }
+    .ok { color:#22c55e; }
+    .bad { color:#ef4444; }
+    .hint { opacity:.75;font-size:12px; margin:8px 0 0; }
+    @media (max-width: 980px) {
+      .wrap { padding:18px 14px; }
+      .brandmark { font-size:34px; }
+      h1 { font-size:31px; }
+      .sub { font-size:16px; }
+      .grid { grid-template-columns:1fr; }
+      .cards { grid-template-columns:repeat(2,minmax(120px,1fr)); }
+      .action-row { flex-direction:column; }
+      button.primary { width:100%; min-width:0; }
+      .actions-secondary { grid-template-columns:1fr 1fr; width:100%; }
+    }
+    @media (max-width: 640px) {
+      .cards { grid-template-columns:1fr; }
+      .actions-secondary { grid-template-columns:1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="hero">
+      <div class="brandline">
+        <div class="brandmark">VulnGraph</div>
+        <div class="brand">Security Intelligence Suite</div>
+      </div>
+      <h1>基于微调大模型与知识图谱的漏洞修复系统</h1>
+      <div class="sub">支持两种输入：代码片段 / GitHub 仓库地址；支持认知引擎策略：规则、云端、本地。</div>
+    </div>
+
+    <div class="cards">
+      <div class="card"><div class="k">服务状态</div><div class="v" id="serverV">-</div></div>
+      <div class="card"><div class="k">漏洞数量</div><div class="v" id="countV">-</div></div>
+      <div class="card"><div class="k">引擎策略</div><div class="v" id="aiV">-</div></div>
+      <div class="card"><div class="k">补丁输出</div><div class="v" id="patchV">-</div></div>
+    </div>
+
+    <div class="panel">
+      <div class="grid">
+        <div>
+          <label>输入类型</label>
+          <select id="inputType">
+            <option value="code">代码片段</option>
+            <option value="github">GitHub 仓库 URL</option>
+          </select>
+        </div>
+        <div>
+          <label>引擎接入策略</label>
+          <select id="aiMode">
+            <option value="rule">规则引擎（无需模型）</option>
+            <option value="cloud">云端认知引擎（Copilot CLI）</option>
+            <option value="local">本地认知引擎（如 Ollama）</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="grid" style="margin-top:10px;">
+        <div>
+          <label>代码输入（Python）</label>
+          <textarea id="codeInput" placeholder="示例：\ndef search_user(name):\n    sql = 'SELECT * FROM users WHERE name=' + name\n    return conn.execute(sql).fetchall()"></textarea>
+        </div>
+        <div>
+          <label>GitHub 仓库 URL</label>
+          <input id="repoUrl" placeholder="https://github.com/owner/repo">
+          <p class="hint">选择“GitHub 仓库 URL”时，后端会克隆仓库并分析其中 Python 文件。</p>
+        </div>
+      </div>
+
+      <div class="row action-row">
+        <button id="analyzeInputBtn" class="primary">开始分析（输出漏洞+补丁）</button>
+        <div class="actions-secondary">
+          <button id="resetBtn" class="warn">重置内置演示项目</button>
+          <button id="testsBtn" class="alt">运行演示测试（自动生成补丁）</button>
+          <button id="graphBtn" class="alt">查看调用图（内置演示）</button>
+          <button id="kgBtn" class="alt">查看漏洞知识图谱（Neo4j + 引擎）</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <label>输出结果（JSON）</label>
+      <pre id="out">就绪。请先输入代码或仓库 URL，然后点击“开始分析”。</pre>
+    </div>
+  </div>
+
+  <script>
+    const out = document.getElementById("out");
+    const serverV = document.getElementById("serverV");
+    const countV = document.getElementById("countV");
+    const aiV = document.getElementById("aiV");
+    const patchV = document.getElementById("patchV");
+    const aiModeEl = document.getElementById("aiMode");
+    let lastAnalysisResult = null;
+
+    const show = (obj) => out.textContent = typeof obj === "string" ? obj : JSON.stringify(obj, null, 2);
+    window.onerror = function(message, source, lineno, colno) {
+      show("前端脚本错误: " + message + " @ " + source + ":" + lineno + ":" + colno);
+    };
+
+    async function call(url, method = "GET", body = null) {
+      const resp = await fetch(url, {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: body ? JSON.stringify(body) : null
+      });
+      const text = await resp.text();
+      let data = {};
+      try {
+        data = text ? JSON.parse(text) : {};
+      } catch {
+        data = { raw: text };
+      }
+      if (!resp.ok) throw new Error(data.detail || data.raw || `HTTP ${resp.status}`);
+      return data;
+    }
+
+    async function wait(ms) {
+      return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+    async function refreshHealth() {
+      try {
+        await call("/health");
+        serverV.innerHTML = '<span class="ok">在线</span>';
+      } catch {
+        serverV.innerHTML = '<span class="bad">离线</span>';
+      }
+    }
+
+    function fillSummary(data) {
+      const count = (typeof data.count === "number")
+        ? data.count
+        : ((data.vulnerabilities || []).length || 0);
+      countV.textContent = String(count);
+      aiV.textContent = engineLabelFromMode(data.ai_mode) || selectedAiLabel();
+      patchV.textContent = (data.vulnerabilities || []).length > 0 ? "已生成" : "无";
+    }
+
+    function engineLabelFromMode(mode) {
+      const m = String(mode || "").toLowerCase();
+      if (m === "rule") return "规则引擎";
+      if (m === "cloud") return "云端认知引擎";
+      if (m === "local") return "本地认知引擎";
+      return "";
+    }
+
+    function selectedAiLabel() {
+      return aiModeEl.options[aiModeEl.selectedIndex].text;
+    }
+
+    function setAiRunning(prefix) {
+      aiV.textContent = prefix + " " + selectedAiLabel();
+    }
+
+    document.getElementById("analyzeInputBtn").addEventListener("click", async () => {
+      const input_type = document.getElementById("inputType").value;
+      const ai_mode = document.getElementById("aiMode").value;
+      const code = document.getElementById("codeInput").value;
+      const repo_url = document.getElementById("repoUrl").value;
+      show("分析中，请稍候...");
+      setAiRunning("运行中：");
+      try {
+        const task = await call("/analyze-input-async", "POST", { input_type, ai_mode, code, repo_url });
+        const jobId = task.job_id;
+        while (true) {
+          const job = await call(`/jobs/${jobId}`, "GET");
+          show({
+            状态: job.status,
+            阶段: job.stage,
+            进度: `${job.progress}%`,
+            消息: job.message
+          });
+          if (job.status === "completed") {
+            fillSummary(job.result || {});
+            lastAnalysisResult = job.result || {};
+            show(job.result || {});
+            break;
+          }
+          if (job.status === "failed") {
+            const err = job.error || "未知错误";
+            if (String(err).includes("克隆仓库失败")) {
+              aiV.textContent = "未进入引擎流程（克隆失败）";
+            } else {
+              aiV.textContent = "分析失败";
+            }
+            countV.textContent = "0";
+            patchV.textContent = "失败";
+            lastAnalysisResult = null;
+            show(`分析失败：${err}`);
+            break;
+          }
+          await wait(700);
+        }
+      } catch (e) {
+        show(String(e));
+      }
+    });
+
+    document.getElementById("resetBtn").addEventListener("click", async () => {
+      aiV.textContent = "系统操作";
+      try { show(await call("/reset", "POST")); }
+      catch (e) { show(String(e)); }
+    });
+
+    document.getElementById("testsBtn").addEventListener("click", async () => {
+      show("正在运行演示测试，请稍候...");
+      aiV.textContent = "测试流程";
+      try {
+        const data = await call("/run-tests", "POST");
+        if (data.auto_generated) {
+          patchV.textContent = "已自动生成";
+        }
+        show(data);
+      }
+      catch (e) { show(String(e)); }
+    });
+
+    document.getElementById("graphBtn").addEventListener("click", async () => {
+      aiV.textContent = "图分析";
+      try { show(await call("/graph")); }
+      catch (e) { show(String(e)); }
+    });
+
+    document.getElementById("kgBtn").addEventListener("click", async () => {
+      if (!lastAnalysisResult || !Array.isArray(lastAnalysisResult.vulnerabilities) || lastAnalysisResult.vulnerabilities.length === 0) {
+        show("请先完成一次漏洞分析，再查看知识图谱。");
+        return;
+      }
+      aiV.textContent = "知识图谱";
+      try {
+        const data = await call("/knowledge-graph", "POST", {
+          vulnerabilities: lastAnalysisResult.vulnerabilities,
+          ai_mode: aiModeEl.value,
+          sync_neo4j: true
+        });
+        show(data);
+      } catch (e) {
+        show(String(e));
+      }
+    });
+
+    aiModeEl.addEventListener("change", () => {
+      aiV.textContent = selectedAiLabel();
+    });
+
+    try {
+      aiV.textContent = selectedAiLabel();
+      refreshHealth();
+    } catch (e) {
+      show("初始化失败: " + String(e));
+    }
+  </script>
+</body>
+</html>
+

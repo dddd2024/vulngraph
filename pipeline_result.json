@@ -1,0 +1,149 @@
+{
+  "target": {
+    "type": "SQL Injection",
+    "file": "F:\\test\\repo\\db.py",
+    "line": 20,
+    "symbol": "search_user",
+    "severity": "ERROR"
+  },
+  "impact": [
+    {
+      "target": "execute",
+      "path": [
+        "search_user",
+        "execute"
+      ]
+    },
+    {
+      "target": "str",
+      "path": [
+        "search_user",
+        "str"
+      ]
+    },
+    {
+      "target": "fetchall",
+      "path": [
+        "search_user",
+        "fetchall"
+      ]
+    }
+  ],
+  "patch_file": "F:\\test\\fix.patch",
+  "pytest_ok": true,
+  "pytest_stdout": ".                                                                        [100%]\n1 passed in 0.03s\n",
+  "pytest_stderr": "",
+  "graph_edges": [
+    {
+      "source": "index",
+      "target": "route"
+    },
+    {
+      "source": "search_api",
+      "target": "get"
+    },
+    {
+      "source": "search_api",
+      "target": "search_user"
+    },
+    {
+      "source": "search_api",
+      "target": "route"
+    },
+    {
+      "source": "file_api",
+      "target": "get"
+    },
+    {
+      "source": "file_api",
+      "target": "read_file"
+    },
+    {
+      "source": "file_api",
+      "target": "route"
+    },
+    {
+      "source": "admin_delete",
+      "target": "get"
+    },
+    {
+      "source": "admin_delete",
+      "target": "delete_user"
+    },
+    {
+      "source": "admin_delete",
+      "target": "route"
+    },
+    {
+      "source": "<module>",
+      "target": "Flask"
+    },
+    {
+      "source": "<module>",
+      "target": "run"
+    },
+    {
+      "source": "<module>",
+      "target": "connect"
+    },
+    {
+      "source": "search_user",
+      "target": "execute"
+    },
+    {
+      "source": "search_user",
+      "target": "str"
+    },
+    {
+      "source": "search_user",
+      "target": "fetchall"
+    },
+    {
+      "source": "read_file",
+      "target": "open"
+    },
+    {
+      "source": "read_file",
+      "target": "read"
+    },
+    {
+      "source": "wrapped",
+      "target": "fn"
+    },
+    {
+      "source": "bootstrap_db",
+      "target": "execute"
+    },
+    {
+      "source": "bootstrap_db",
+      "target": "fetchone"
+    },
+    {
+      "source": "bootstrap_db",
+      "target": "commit"
+    }
+  ],
+  "findings": [
+    {
+      "type": "Privilege Escalation",
+      "file": "F:\\test\\repo\\app.py",
+      "line": 28,
+      "symbol": "admin_delete",
+      "severity": "ERROR"
+    },
+    {
+      "type": "SQL Injection",
+      "file": "F:\\test\\repo\\db.py",
+      "line": 20,
+      "symbol": "search_user",
+      "severity": "ERROR"
+    },
+    {
+      "type": "Path Traversal",
+      "file": "F:\\test\\repo\\files.py",
+      "line": 2,
+      "symbol": "read_file",
+      "severity": "ERROR"
+    }
+  ]
+}

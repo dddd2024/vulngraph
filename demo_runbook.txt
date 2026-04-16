@@ -1,0 +1,20 @@
+Security Auto-Fix Demo Runbook
+==============================
+
+1) Start service
+   .\.venv\Scripts\python -m uvicorn api.server:app --host 127.0.0.1 --port 8000 --reload
+
+2) Open UI
+   http://127.0.0.1:8000
+
+3) Presenter flow
+   - Click "Reset Demo State"
+   - Click "Run Analyze Pipeline"
+   - Click "Open fix.patch"
+   - Click "Load Graph"
+   - Click "Run Full Tests"
+
+4) Terminal fallback commands
+   .\.venv\Scripts\python main.py
+   .\.venv\Scripts\python -m pytest -q
+
