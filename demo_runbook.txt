@@ -2,6 +2,7 @@ Security Auto-Fix Demo Runbook
 ==============================
 
 1) Start service
+   # 先编辑项目根目录 .env，填写豆包 API 信息（DOUBAO_API_KEY/DOUBAO_MODEL）
    .\.venv\Scripts\python -m uvicorn api.server:app --host 127.0.0.1 --port 8000 --reload
 
 2) Open UI

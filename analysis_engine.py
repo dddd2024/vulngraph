@@ -20,11 +20,14 @@ from detector.vuln_detector import (
     detect_privilege_escalation,
     detect_sql_injection,
 )
+from env_config import get_cloud_client_kwargs, get_cloud_model, load_project_env
 
 try:
     from openai import OpenAI
 except Exception:  # pragma: no cover
     OpenAI = None  # type: ignore[assignment]
+
+load_project_env()
 
 
 def _collect_py_files(root: Path) -> list[Path]:
@@ -253,13 +256,9 @@ def _call_cloud_ai(prompt: str) -> str:
     # 次级回退：OpenAI API（兼容旧配置）
     if OpenAI is None:
         raise RuntimeError(f"Copilot CLI 调用失败：{cp.stderr.strip() or cp.stdout.strip()}")
-    if not os.getenv("OPENAI_API_KEY"):
-        raise RuntimeError(
-            "Copilot CLI 调用失败，且 OPENAI_API_KEY 未配置，无法回退到 OpenAI。"
-        )
-    client = OpenAI()
+    client = OpenAI(**get_cloud_client_kwargs())
     resp = client.chat.completions.create(
-        model=os.getenv("OPENAI_MODEL", "gpt-4.1"),
+        model=get_cloud_model("gpt-4.1"),
         messages=[{"role": "user", "content": prompt}],
     )
     return (resp.choices[0].message.content or "").strip()
