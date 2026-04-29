@@ -85,6 +85,7 @@ def _ai_note(
     cwe: str,
     cases: list[dict[str, str]],
     fixes: list[str],
+    model_name: str | None = None,
 ) -> tuple[str, str]:
     if ai_mode == "rule":
         return _rule_note(str(vuln.get("type", "Unknown")), cwe, cases, fixes), "rule"
@@ -99,7 +100,8 @@ def _ai_note(
         f"当前漏洞上下文: file={vuln.get('file', '')}, line={vuln.get('line', 0)}, severity={vuln.get('severity', '')}"
     )
     try:
-        return generate_ai_text(ai_mode, prompt), ai_mode
+        note, _ = generate_ai_text(ai_mode, prompt, model_name=model_name)
+        return note, ai_mode
     except (RuntimeError, urllib.error.URLError, TimeoutError, ValueError) as exc:
         note = _rule_note(str(vuln.get("type", "Unknown")), cwe, cases, fixes)
         return f"{note}（AI 不可用，回退规则摘要：{exc}）", "rule-fallback"
@@ -108,6 +110,7 @@ def _ai_note(
 def build_vulnerability_knowledge_graph(
     vulnerabilities: list[dict[str, Any]],
     ai_mode: str = "rule",
+    model_name: str | None = None,
 ) -> dict[str, Any]:
     if not vulnerabilities:
         raise ValueError("vulnerabilities 不能为空。")
@@ -136,7 +139,9 @@ def build_vulnerability_knowledge_graph(
         cwe = str(vuln.get("cwe") or CWE_BY_TYPE.get(vuln_type, "CWE-Other"))
         cases = CASE_LIBRARY.get(vuln_type, [])
         fixes = FIX_PATTERNS.get(vuln_type, ["输入校验", "最小权限", "安全编码规范"])
-        note, note_mode = _ai_note(ai_mode, vuln, cwe, cases, fixes)
+        note, note_mode = _ai_note(
+            ai_mode, vuln, cwe, cases, fixes, model_name=model_name
+        )
 
         vuln_id = f"vuln:{idx}:{_slug(vuln_type)}:{_slug(str(vuln.get('file', 'unknown')))}:{int(vuln.get('line', 0))}"
         cwe_id = f"cwe:{cwe.lower()}"
@@ -197,6 +202,7 @@ def build_vulnerability_knowledge_graph(
             "node_count": len(nodes),
             "edge_count": len(edges),
             "ai_mode": ai_mode,
+            "model_name": (model_name or "").strip() or None,
         },
     }
 
