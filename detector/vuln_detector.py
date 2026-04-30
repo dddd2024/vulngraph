@@ -14,6 +14,68 @@ def _call_attr_name(call: ast.Call) -> str:
     return "<unknown>"
 
 
+def _literal_text(node: ast.AST) -> str:
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return node.value
+    if isinstance(node, ast.JoinedStr):
+        parts = []
+        for value in node.values:
+            if isinstance(value, ast.Constant) and isinstance(value.value, str):
+                parts.append(value.value)
+        return "".join(parts)
+    if isinstance(node, ast.BinOp):
+        return _literal_text(node.left) + _literal_text(node.right)
+    if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
+        return _literal_text(node.func.value)
+    return ""
+
+
+def _looks_like_sql(text: str) -> bool:
+    normalized = text.upper()
+    return any(
+        keyword in normalized
+        for keyword in ("SELECT ", "INSERT ", "UPDATE ", "DELETE ", " WHERE ")
+    )
+
+
+def _contains_dynamic_value(node: ast.AST) -> bool:
+    if isinstance(node, ast.FormattedValue):
+        return True
+    if isinstance(node, ast.Name):
+        return True
+    if isinstance(node, ast.Call):
+        return True
+    if isinstance(node, ast.Subscript):
+        return True
+    if isinstance(node, ast.Attribute):
+        return True
+    return any(_contains_dynamic_value(child) for child in ast.iter_child_nodes(node))
+
+
+def _is_unsafe_sql_expr(node: ast.AST) -> bool:
+    if isinstance(node, ast.JoinedStr):
+        return _looks_like_sql(_literal_text(node)) and any(
+            isinstance(value, ast.FormattedValue) for value in node.values
+        )
+
+    if isinstance(node, ast.BinOp):
+        if isinstance(node.op, ast.Add):
+            text = _literal_text(node)
+            return _looks_like_sql(text) and _contains_dynamic_value(node)
+        if isinstance(node.op, ast.Mod):
+            return _looks_like_sql(_literal_text(node.left)) and _contains_dynamic_value(
+                node.right
+            )
+
+    if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
+        if node.func.attr == "format":
+            return _looks_like_sql(_literal_text(node.func.value)) and (
+                bool(node.args) or bool(node.keywords)
+            )
+
+    return False
+
+
 def detect_sql_injection(file_path: str) -> list[dict[str, Any]]:
     source = Path(file_path).read_text(encoding="utf-8")
     tree = ast.parse(source)
@@ -23,7 +85,7 @@ def detect_sql_injection(file_path: str) -> list[dict[str, Any]]:
     for node in ast.walk(tree):
         if not isinstance(node, ast.Assign):
             continue
-        if not isinstance(node.value, ast.BinOp) or not isinstance(node.value.op, ast.Add):
+        if not _is_unsafe_sql_expr(node.value):
             continue
         for target in node.targets:
             if isinstance(target, ast.Name):
@@ -36,8 +98,8 @@ def detect_sql_injection(file_path: str) -> list[dict[str, Any]]:
             continue
         first_arg = node.args[0]
         is_tainted = isinstance(first_arg, ast.Name) and first_arg.id in tainted_sql_vars
-        is_concat = isinstance(first_arg, ast.BinOp) and isinstance(first_arg.op, ast.Add)
-        if is_tainted or is_concat:
+        is_unsafe_inline = _is_unsafe_sql_expr(first_arg)
+        if is_tainted or is_unsafe_inline:
             findings.append(
                 {
                     "type": "SQL Injection",

@@ -1,6 +1,17 @@
 from analysis_engine import analyze_input
 
 
+F_STRING_SQL_LOGIN_CODE = (
+    "import pymysql\n"
+    "db = pymysql.connect(host='localhost', user='root', password='123456')\n"
+    "cursor = db.cursor()\n"
+    "username = input('请输入用户名：')\n"
+    "password = input('请输入密码：')\n"
+    "sql = f\"SELECT * FROM user WHERE username='{username}' AND password='{password}'\"\n"
+    "cursor.execute(sql)\n"
+)
+
+
 def test_analyze_input_rule_mode_outputs_api_metadata():
     code = (
         "def search_user(name):\n"
@@ -95,3 +106,38 @@ def test_analyze_input_cloud_no_vulnerability_explains_no_api_call():
     assert result["api_called"] is False
     assert result["api_models"] == []
     assert result["display"]["zh"]["message"] == "未发现漏洞，因此未调用模型生成补丁。"
+
+
+def test_analyze_input_rule_mode_detects_f_string_sql_login():
+    result = analyze_input(
+        input_type="code",
+        ai_mode="rule",
+        code=F_STRING_SQL_LOGIN_CODE,
+    )
+
+    assert result["count"] == 1
+    assert result["api_called"] is False
+    assert result["vulnerabilities"][0]["type"] == "SQL Injection"
+    assert result["vulnerabilities"][0]["bilingual"]["type"]["zh"] == "SQL 注入"
+    assert result["display"]["zh"]["vulnerabilities"][0]["漏洞类型"] == "SQL 注入"
+
+
+def test_analyze_input_cloud_mode_detects_f_string_sql_and_calls_ai(monkeypatch):
+    def fake_generate_ai_text(ai_mode: str, prompt: str, model_name: str | None = None):
+        assert ai_mode == "cloud"
+        assert "SQL Injection" in prompt
+        return "# fake ai patch", model_name or "doubao-seed-1-8-251228"
+
+    monkeypatch.setattr("analysis_engine.generate_ai_text", fake_generate_ai_text)
+    result = analyze_input(
+        input_type="code",
+        ai_mode="cloud",
+        model_name="doubao-seed-1-8-251228",
+        code=F_STRING_SQL_LOGIN_CODE,
+    )
+
+    assert result["count"] == 1
+    assert result["api_called"] is True
+    assert result["api_models"] == ["doubao-seed-1-8-251228"]
+    assert result["vulnerabilities"][0]["type"] == "SQL Injection"
+    assert result["vulnerabilities"][0]["patch"] == "# fake ai patch"
