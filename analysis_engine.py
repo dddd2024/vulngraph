@@ -437,11 +437,13 @@ def _build_display(
     }
 
 
-def _call_cloud_ai(prompt: str, model_name: str | None = None) -> tuple[str, str]:
+def _call_cloud_ai(
+    prompt: str, model_name: str | None = None, api_key: str | None = None
+) -> tuple[str, str]:
     selected_model = (model_name or "").strip()
 
-    # 未指定模型时，优先使用 Copilot CLI（与你当前终端同模型链路）
-    if not selected_model:
+    # 未指定模型且未显式传入 API Key 时，优先使用 Copilot CLI。
+    if not selected_model and not (api_key or "").strip():
         cp = subprocess.run(
             ["gh", "copilot", "-p", prompt],
             capture_output=True,
@@ -465,7 +467,7 @@ def _call_cloud_ai(prompt: str, model_name: str | None = None) -> tuple[str, str
     # 次级回退：OpenAI API（兼容旧配置）
     if OpenAI is None:
         raise RuntimeError("OpenAI SDK 不可用，且无法使用 Copilot CLI。")
-    client = OpenAI(**get_cloud_client_kwargs())
+    client = OpenAI(**get_cloud_client_kwargs(api_key_override=api_key))
     used_model = selected_model or get_cloud_model("gpt-4.1")
     resp = client.chat.completions.create(
         model=used_model,
@@ -493,10 +495,10 @@ def _call_local_ai(prompt: str, model_name: str | None = None) -> tuple[str, str
 
 
 def generate_ai_text(
-    ai_mode: str, prompt: str, model_name: str | None = None
+    ai_mode: str, prompt: str, model_name: str | None = None, api_key: str | None = None
 ) -> tuple[str, str]:
     if ai_mode == "cloud":
-        return _call_cloud_ai(prompt, model_name=model_name)
+        return _call_cloud_ai(prompt, model_name=model_name, api_key=api_key)
     if ai_mode == "local":
         return _call_local_ai(prompt, model_name=model_name)
     raise ValueError(f"unsupported ai_mode for text generation: {ai_mode}")
@@ -509,6 +511,7 @@ def _patch_with_ai(
     rule_diff: str,
     rule_reason: str,
     model_name: str | None = None,
+    api_key: str | None = None,
 ) -> tuple[str, str, str, str | None, bool]:
     if ai_mode == "rule":
         return rule_diff, rule_reason, "rule", None, False
@@ -523,7 +526,7 @@ def _patch_with_ai(
     try:
         if ai_mode in ("cloud", "local"):
             patch_text, used_model = generate_ai_text(
-                ai_mode, prompt, model_name=model_name
+                ai_mode, prompt, model_name=model_name, api_key=api_key
             )
             patch_reason = "云端 AI 生成" if ai_mode == "cloud" else "本地 AI 生成"
             return patch_text, patch_reason, ai_mode, used_model, True
@@ -539,7 +542,12 @@ def _patch_with_ai(
 
 
 def _build_finding_output(
-    vuln: dict[str, Any], file_path: Path, root: Path, ai_mode: str, model_name: str | None = None
+    vuln: dict[str, Any],
+    file_path: Path,
+    root: Path,
+    ai_mode: str,
+    model_name: str | None = None,
+    api_key: str | None = None,
 ) -> dict[str, Any]:
     original = file_path.read_text(encoding="utf-8", errors="ignore")
     relative = str(file_path.relative_to(root)).replace("\\", "/")
@@ -558,7 +566,7 @@ def _build_finding_output(
         rule_diff = f"# 未自动生成差异，建议手工修复：{rule_reason}"
 
     patch_text, patch_reason, patch_mode, model_used, api_called = _patch_with_ai(
-        ai_mode, vuln, original, rule_diff, rule_reason, model_name=model_name
+        ai_mode, vuln, original, rule_diff, rule_reason, model_name=model_name, api_key=api_key
     )
     taxonomy = {
         "SQL Injection": {"cwe": "CWE-89", "confidence": "high"},
@@ -593,7 +601,9 @@ def _build_finding_output(
     return finding_output
 
 
-def _analyze_repo(repo_root: Path, ai_mode: str, model_name: str | None = None) -> dict[str, Any]:
+def _analyze_repo(
+    repo_root: Path, ai_mode: str, model_name: str | None = None, api_key: str | None = None
+) -> dict[str, Any]:
     findings: list[dict[str, Any]] = []
     skipped_details: list[dict[str, str]] = []
     for py_file in _collect_py_files(repo_root):
@@ -625,7 +635,9 @@ def _analyze_repo(repo_root: Path, ai_mode: str, model_name: str | None = None) 
 
     findings = _dedup_findings(findings)
     out_findings = [
-        _build_finding_output(v, Path(v["file"]), repo_root, ai_mode, model_name=model_name)
+        _build_finding_output(
+            v, Path(v["file"]), repo_root, ai_mode, model_name=model_name, api_key=api_key
+        )
         for v in findings
     ]
     api_models: list[str] = []
@@ -662,6 +674,7 @@ def analyze_input(
     input_type: str,
     ai_mode: str = "rule",
     model_name: str | None = None,
+    api_key: str | None = None,
     code: str | None = None,
     repo_url: str | None = None,
     progress_callback: Any | None = None,
@@ -708,7 +721,9 @@ def analyze_input(
             raise ValueError("input_type 仅支持 code 或 github。")
 
         emit("detect", 55, "开始漏洞检测")
-        analysis = _analyze_repo(repo_root, ai_mode=ai_mode, model_name=model_name)
+        analysis = _analyze_repo(
+            repo_root, ai_mode=ai_mode, model_name=model_name, api_key=api_key
+        )
         emit("patch", 85, "漏洞检测完成，正在整理补丁输出")
         analysis["input_type"] = input_type
         analysis["model_name"] = (model_name or "").strip() or None

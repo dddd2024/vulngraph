@@ -19,8 +19,8 @@ def load_project_env() -> None:
     load_dotenv(ROOT / ".env", override=False)
 
 
-def get_cloud_client_kwargs() -> dict[str, Any]:
-    api_key = os.getenv("OPENAI_API_KEY") or os.getenv("DOUBAO_API_KEY") or os.getenv("ARK_API_KEY")
+def get_cloud_client_kwargs(api_key_override: str | None = None) -> dict[str, Any]:
+    api_key = (api_key_override or "").strip() or os.getenv("OPENAI_API_KEY") or os.getenv("DOUBAO_API_KEY") or os.getenv("ARK_API_KEY")
     if not api_key:
         raise RuntimeError(
             "未配置 API Key。请在 .env 中设置 OPENAI_API_KEY 或 DOUBAO_API_KEY/ARK_API_KEY。"

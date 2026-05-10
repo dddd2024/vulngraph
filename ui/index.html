@@ -3,627 +3,152 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>基于多模型协同检索增强的漏洞补丁生成</title>
-  <style>
-    :root { color-scheme: dark; }
-    * { box-sizing: border-box; }
-    body {
-      margin:0;
-      font-family:"Microsoft YaHei","Segoe UI",sans-serif;
-      background:
-        radial-gradient(1200px 600px at 85% -10%, rgba(56,189,248,.16), transparent 55%),
-        radial-gradient(900px 500px at -10% 10%, rgba(37,99,235,.18), transparent 55%),
-        #070d1e;
-      color:#e9efff;
-    }
-    .wrap { max-width:1240px; margin:0 auto; padding:28px 24px 24px; }
-    .hero { margin-bottom:18px; }
-    .brandline {
-      display:flex;
-      align-items:center;
-      gap:12px;
-      margin-bottom:8px;
-      flex-wrap:wrap;
-    }
-    .brandmark {
-      font-size:42px;
-      font-weight:900;
-      line-height:1;
-      letter-spacing:.4px;
-      color:transparent;
-      background:linear-gradient(95deg, #8ec5ff 0%, #5b8dff 45%, #59d0ff 100%);
-      -webkit-background-clip:text;
-      background-clip:text;
-      text-shadow:0 10px 26px rgba(59,130,246,.24);
-    }
-    .brand {
-      display:inline-flex; align-items:center;
-      padding:8px 14px; border-radius:999px; border:1px solid #3d5fbb;
-      background:linear-gradient(90deg,rgba(37,99,235,.24),rgba(56,189,248,.16));
-      font-size:13px; letter-spacing:.3px; color:#cde3ff;
-      box-shadow: inset 0 0 0 1px rgba(255,255,255,.04), 0 8px 22px rgba(7,16,40,.38);
-    }
-    h1 { margin:0 0 10px; font-size:42px; line-height:1.12; letter-spacing:.2px; }
-    .sub { opacity:.9; margin-bottom:0; font-size:17px; color:#c2d5ff; }
-    .panel {
-      background:linear-gradient(180deg, rgba(20,31,62,.96), rgba(14,24,50,.96));
-      border:1px solid #2a3d72;
-      border-radius:14px;
-      padding:14px;
-      margin-bottom:14px;
-      box-shadow: 0 16px 40px rgba(3, 8, 22, .35), inset 0 0 0 1px rgba(255,255,255,.02);
-    }
-    .grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
-    label { display:block; font-size:15px; margin-bottom:8px; opacity:.92; font-weight:600; }
-    textarea, input, select {
-      width:100%; border-radius:10px; border:1px solid #3a4d82;
-      background:#0a1125; color:#dbe8ff; padding:12px;
-      font-size:16px;
-    }
-    textarea { min-height:220px; resize:vertical; line-height:1.45; }
-    .row { display:flex; gap:10px; flex-wrap:wrap; margin-top:14px; }
-    button {
-      border:1px solid transparent;
-      border-radius:11px;
-      padding:12px 16px;
-      cursor:pointer;
-      background:#2563eb;
-      color:#fff;
-      font-weight:700;
-      font-size:15px;
-      transition: transform .12s ease, box-shadow .12s ease, border-color .12s ease, filter .12s ease;
-    }
-    button:hover { transform: translateY(-1px); filter: brightness(1.05); }
-    button:active { transform: translateY(0); }
-    button.alt {
-      background:linear-gradient(180deg, #44556f, #35455d);
-      border-color:#4f6585;
-    }
-    button.warn {
-      background:linear-gradient(180deg, #d97706, #b45309);
-      border-color:#da8a2c;
-    }
-    button.primary {
-      min-width:290px;
-      background:linear-gradient(180deg, #3a78ff, #2463eb);
-      box-shadow: 0 10px 24px rgba(37, 99, 235, .34);
-      border-color:#6fa0ff;
-    }
-    .action-row { align-items:stretch; }
-    .actions-secondary {
-      display:grid;
-      grid-template-columns:repeat(4, minmax(150px, 1fr));
-      gap:10px;
-      flex:1;
-      min-width:300px;
-    }
-    .actions-secondary button { width:100%; height:100%; }
-    .cards {
-      display:grid;
-      grid-template-columns:repeat(4,minmax(150px,1fr));
-      gap:12px;
-      margin-bottom:14px;
-    }
-    .card {
-      background:linear-gradient(180deg, #101a37, #0f1731);
-      border:1px solid #2a3e72;
-      border-radius:12px;
-      padding:12px;
-    }
-    .k { font-size:13px; opacity:.82; }
-    .v { font-size:24px; font-weight:800; margin-top:6px; line-height:1.2; word-break:break-word; }
-    pre {
-      background:#060d1d;
-      border:1px solid #2a3f74;
-      border-radius:12px;
-      padding:14px;
-      height:48vh;
-      overflow:auto;
-      color:#d4e3ff;
-      line-height:1.48;
-      font-size:14px;
-    }
-    .ok { color:#22c55e; }
-    .bad { color:#ef4444; }
-    .hint { opacity:.75;font-size:12px; margin:8px 0 0; }
-    @media (max-width: 980px) {
-      .wrap { padding:18px 14px; }
-      .brandmark { font-size:34px; }
-      h1 { font-size:31px; }
-      .sub { font-size:16px; }
-      .grid { grid-template-columns:1fr; }
-      .cards { grid-template-columns:repeat(2,minmax(120px,1fr)); }
-      .action-row { flex-direction:column; }
-      button.primary { width:100%; min-width:0; }
-      .actions-secondary { grid-template-columns:1fr 1fr; width:100%; }
-    }
-    @media (max-width: 640px) {
-      .cards { grid-template-columns:1fr; }
-      .actions-secondary { grid-template-columns:1fr; }
-    }
-  </style>
+  <title>VulnGraph Sentinel Console</title>
+  <link rel="stylesheet" href="/ui/styles.css">
 </head>
 <body>
-  <div class="wrap">
-    <div class="hero">
-      <div class="brandline">
-          <div class="brandmark">VulnPatch</div>
-          <div class="brand">Security Intelligence Suite</div>
+  <header class="topbar">
+    <div class="topbar-left">
+      <div class="logo">VG</div>
+      <div>
+        <div class="product-name" id="productName">VulnGraph Sentinel Console</div>
+        <div class="product-sub" id="productSub">基于多模型协同检索增强的漏洞补丁生成</div>
       </div>
-          <h1>基于多模型协同检索增强的漏洞补丁生成</h1>
-      <div class="sub">支持两种输入：代码片段 / GitHub 仓库地址；支持认知引擎策略：规则、云端、本地。</div>
     </div>
-
-    <div class="cards">
-      <div class="card"><div class="k">服务状态</div><div class="v" id="serverV">-</div></div>
-      <div class="card"><div class="k">漏洞数量</div><div class="v" id="countV">-</div></div>
-      <div class="card"><div class="k">引擎策略</div><div class="v" id="aiV">-</div></div>
-      <div class="card"><div class="k">补丁输出</div><div class="v" id="patchV">-</div></div>
+    <div class="topbar-right">
+      <div class="status-chip"><span id="labelService">服务</span> <span id="topStatus">-</span></div>
+      <div class="status-chip"><span id="labelEngine">引擎</span> <span id="topEngine">-</span></div>
+      <div class="status-chip"><span id="labelModel">模型</span> <span id="topModel">-</span></div>
+      <div class="status-chip"><span id="labelJob">任务</span> <span id="topJob">idle</span></div>
+      <select id="langSwitch" class="lang-switch" aria-label="language">
+        <option value="zh-CN">中文</option>
+        <option value="en-US">English</option>
+      </select>
     </div>
+  </header>
 
-    <div class="panel">
-      <div class="grid">
-        <div>
-          <label>输入类型</label>
-          <select id="inputType">
-            <option value="code">代码片段</option>
-            <option value="github">GitHub 仓库 URL</option>
-          </select>
-        </div>
-        <div>
-          <label>引擎接入策略</label>
-          <select id="aiMode">
-            <option value="rule">规则引擎（无需模型）</option>
-            <option value="cloud">云端认知引擎（Copilot CLI）</option>
-            <option value="local">本地认知引擎（如 Ollama）</option>
-          </select>
-        </div>
-      </div>
-      <div style="margin-top:10px;">
-        <label>模型选择（启动时读取 .env）</label>
-        <select id="modelName"></select>
-        <p class="hint" id="modelHint">规则引擎模式不会使用模型。</p>
-      </div>
+  <div class="shell">
+    <aside class="sidebar">
+      <a href="#analyze" id="navAnalyze">Analyze</a>
+      <a href="#findings" id="navFindings">Findings</a>
+      <a href="#patch" id="navPatch">Patch</a>
+      <a href="#graph" id="navGraph">Graph</a>
+      <a href="#raw-json" id="navRaw">Raw JSON</a>
+    </aside>
 
-      <div class="grid" style="margin-top:10px;">
-        <div>
-          <label>代码输入（Python）</label>
-          <textarea id="codeInput" placeholder="示例：\ndef search_user(name):\n    sql = 'SELECT * FROM users WHERE name=' + name\n    return conn.execute(sql).fetchall()"></textarea>
+    <main class="content">
+      <section id="overview" class="card">
+        <h2 id="titleOverview">Security Overview</h2>
+        <div class="kpi-grid">
+          <div class="kpi"><div class="kpi-label" id="kpiLabelFindings">Findings</div><div id="kpiFindings" class="kpi-value">0</div></div>
+          <div class="kpi"><div class="kpi-label" id="kpiLabelMaxRisk">Max Risk</div><div id="kpiMaxRisk" class="kpi-value risk-low">0</div></div>
+          <div class="kpi"><div class="kpi-label" id="kpiLabelCritical">Critical Issues</div><div id="kpiCritical" class="kpi-value">0</div></div>
+          <div class="kpi"><div class="kpi-label" id="kpiLabelPatch">Patch Status</div><div id="kpiPatch" class="kpi-value">-</div></div>
+          <div class="kpi"><div class="kpi-label" id="kpiLabelEngine">Engine</div><div id="kpiEngine" class="kpi-value">-</div></div>
+          <div class="kpi"><div class="kpi-label" id="kpiLabelSkipped">Skipped Files</div><div id="kpiSkipped" class="kpi-value">0</div></div>
         </div>
-        <div>
-          <label>GitHub 仓库 URL</label>
+      </section>
+
+      <section id="analyze" class="card">
+        <h2 id="titleAnalyze">Analyze Target</h2>
+
+        <div class="segmented" role="tablist" aria-label="输入类型">
+          <button class="seg-btn active" id="segCode" data-type="code">Code Snippet</button>
+          <button class="seg-btn" id="segGithub" data-type="github">GitHub Repository</button>
+        </div>
+
+        <div class="hint" style="margin: 2px 0 10px;">模型配置（引擎 + 模型）</div>
+        <div class="form-grid">
+          <div>
+            <label for="aiMode">引擎接入策略</label>
+            <select id="aiMode">
+              <option value="rule">规则引擎</option>
+              <option value="cloud">Cloud AI</option>
+              <option value="local">Local AI</option>
+            </select>
+          </div>
+          <div>
+            <label for="modelName">模型选择（读取 .env）</label>
+            <select id="modelName"></select>
+            <div class="hint" id="modelHint">规则引擎模式不会使用模型。</div>
+          </div>
+        </div>
+
+        <div id="codePanel" class="input-panel">
+          <label for="codeInput">代码输入（Python）</label>
+          <textarea id="codeInput" class="code-editor" spellcheck="false" placeholder="def search_user(name):&#10;    sql = 'SELECT * FROM users WHERE name=' + name&#10;    return conn.execute(sql).fetchall()"></textarea>
+        </div>
+
+        <div id="repoPanel" class="input-panel hidden">
+          <label for="repoUrl">GitHub 仓库 URL</label>
           <input id="repoUrl" placeholder="https://github.com/owner/repo">
-          <p class="hint">选择“GitHub 仓库 URL”时，后端会克隆仓库并分析其中 Python 文件。</p>
+          <div class="hint">选择 GitHub Repository 时，后端会克隆仓库并分析 Python 文件。</div>
         </div>
-      </div>
 
-      <div class="row action-row">
-        <button id="analyzeInputBtn" class="primary">开始分析（输出漏洞+补丁）</button>
-        <div class="actions-secondary">
-          <button id="resetBtn" class="warn">重置内置演示项目</button>
-          <button id="testsBtn" class="alt">运行演示测试（自动生成补丁）</button>
-          <button id="graphBtn" class="alt">查看调用图（内置演示）</button>
-          <button id="kgBtn" class="alt">查看漏洞知识图谱（Neo4j + 引擎）</button>
+        <div class="actions">
+          <button id="analyzeInputBtn" class="btn btn-primary">开始分析</button>
+          <button id="resetBtn" class="btn">重置演示项目</button>
+          <button id="testsBtn" class="btn">运行演示测试</button>
         </div>
-      </div>
-    </div>
+      </section>
 
-    <div class="panel">
-      <label>输出结果（JSON）</label>
-      <pre id="out">就绪。请先输入代码或仓库 URL，然后点击“开始分析”。</pre>
-    </div>
+      <section class="card">
+        <h2 id="titleProgress">Analysis Progress</h2>
+        <div class="stepper" id="stepper">
+          <div class="step" data-step="prepare">Prepare</div>
+          <div class="step" data-step="detect">Detect</div>
+          <div class="step" data-step="patch">Patch</div>
+          <div class="step" data-step="done">Done</div>
+        </div>
+        <div class="progress-wrap">
+          <div id="progressBar" class="progress-bar"></div>
+        </div>
+        <div id="jobInfo" class="job-info">状态：idle</div>
+        <div id="errorPanel" class="error-panel hidden"></div>
+      </section>
+
+      <section id="findings" class="card two-col">
+        <div>
+          <h2 id="titleFindings">Findings</h2>
+          <div id="findingsList" class="findings-list"></div>
+          <div id="findingsEmpty" class="empty">暂无漏洞结果。运行分析后会在此展示结构化发现。</div>
+        </div>
+        <div>
+          <h2 id="titleDetail">Finding Detail</h2>
+          <div id="findingDetail" class="detail-panel">请选择一条漏洞记录查看详情。</div>
+        </div>
+      </section>
+
+      <section id="patch" class="card">
+        <h2 id="titlePatch">Patch Diff</h2>
+        <div class="actions">
+          <button id="copyPatchBtn" class="btn">Copy Patch</button>
+          <a class="btn" id="downloadPatchBtn" href="/artifact/fix.patch" download>Download fix.patch</a>
+        </div>
+        <pre id="patchDiff" class="diff-viewer">暂无补丁内容。</pre>
+      </section>
+
+      <section id="graph" class="card">
+        <h2 id="titleAdvanced">Advanced Analysis</h2>
+        <div class="actions">
+          <button id="graphBtn" class="btn">查看调用图</button>
+          <button id="kgBtn" class="btn">查看漏洞知识图谱</button>
+        </div>
+        <pre id="graphOut" class="mono-block">图分析输出会显示在这里。</pre>
+      </section>
+
+      <section id="raw-json" class="card">
+        <details>
+          <summary id="titleRaw">Advanced Raw JSON</summary>
+          <div class="actions">
+            <button id="copyJsonBtn" class="btn">Copy JSON</button>
+          </div>
+          <pre id="rawOut" class="mono-block">就绪。请先运行分析。</pre>
+        </details>
+      </section>
+    </main>
   </div>
 
-  <script>
-    const out = document.getElementById("out");
-    const serverV = document.getElementById("serverV");
-    const countV = document.getElementById("countV");
-    const aiV = document.getElementById("aiV");
-    const patchV = document.getElementById("patchV");
-    const aiModeEl = document.getElementById("aiMode");
-    const modelNameEl = document.getElementById("modelName");
-    const modelHintEl = document.getElementById("modelHint");
-    let modelCatalog = {
-      cloud: { default_model: null, models: [] },
-      local: { default_model: null, models: [] }
-    };
-    let lastAnalysisResult = null;
-
-    const show = (obj) => out.textContent = typeof obj === "string" ? obj : JSON.stringify(obj, null, 2);
-    const supportedLanguages = ["zh-CN", "en-US"];
-    const typeZh = {
-      "SQL Injection": "SQL 注入",
-      "Path Traversal": "路径穿越",
-      "Privilege Escalation": "权限提升"
-    };
-    const severityZh = {
-      ERROR: "严重",
-      WARN: "警告",
-      WARNING: "警告",
-      INFO: "信息",
-      UNKNOWN: "未知"
-    };
-    const confidenceZh = { high: "高", medium: "中", low: "低" };
-    const engineZh = { ast: "AST 静态分析", pattern: "模式匹配" };
-    const patchModeZh = {
-      rule: "规则补丁",
-      cloud: "云端 AI",
-      local: "本地 AI",
-      "rule-fallback": "规则回退"
-    };
-    const patchReasonEn = {
-      "将字符串拼接 SQL 改为参数化查询，阻断 SQL 注入。": "Replaced string-concatenated SQL with a parameterized query to prevent SQL injection.",
-      "增加路径规范化与目录边界校验，阻止路径穿越。": "Added path normalization and base-directory boundary checks to prevent path traversal.",
-      "建议对 open(path) 增加 realpath 校验和白名单目录限制。": "Recommend adding realpath validation and an allowlisted base directory for open(path).",
-      "已存在权限注解。": "Authorization decorator already exists.",
-      "为管理员路由增加 @admin_required 权限校验。": "Added @admin_required authorization checks to administrator routes.",
-      "未命中规则补丁。": "No rule-based patch matched this finding.",
-      "云端 AI 生成": "Generated by cloud AI.",
-      "本地 AI 生成": "Generated by local AI."
-    };
-    window.onerror = function(message, source, lineno, colno) {
-      show("前端脚本错误: " + message + " @ " + source + ":" + lineno + ":" + colno);
-    };
-
-    async function call(url, method = "GET", body = null) {
-      const resp = await fetch(url, {
-        method,
-        headers: { "Content-Type": "application/json" },
-        body: body ? JSON.stringify(body) : null
-      });
-      const text = await resp.text();
-      let data = {};
-      try {
-        data = text ? JSON.parse(text) : {};
-      } catch {
-        data = { raw: text };
-      }
-      if (!resp.ok) throw new Error(data.detail || data.raw || `HTTP ${resp.status}`);
-      return data;
-    }
-
-    function bilingualPair(value, labels) {
-      const en = String(value || "");
-      return { en, zh: labels[en] || en };
-    }
-
-    function patchReasonEnglish(reason) {
-      if (patchReasonEn[reason]) return patchReasonEn[reason];
-      const fallbackMarker = "（AI 不可用，已回退规则补丁：";
-      if (reason.includes(fallbackMarker) && reason.endsWith("）")) {
-        const parts = reason.split(fallbackMarker);
-        const detail = parts.slice(1).join(fallbackMarker).slice(0, -1);
-        return `${patchReasonEnglish(parts[0])} (AI unavailable; fell back to rule patch: ${detail})`;
-      }
-      return reason;
-    }
-
-    function ensureBilingualFinding(vuln) {
-      const item = { ...vuln };
-      if (item.bilingual && typeof item.bilingual === "object") return item;
-      const engines = Array.isArray(item.engines) ? item.engines : [];
-      item.bilingual = {
-        type: bilingualPair(item.type, typeZh),
-        severity: bilingualPair(item.severity, severityZh),
-        confidence: bilingualPair(item.confidence, confidenceZh),
-        engines: engines.map(engine => bilingualPair(engine, engineZh)),
-        patch_mode: bilingualPair(item.patch_mode, patchModeZh),
-        patch_reason: {
-          en: patchReasonEnglish(String(item.patch_reason || "")),
-          zh: String(item.patch_reason || "")
-        }
-      };
-      return item;
-    }
-
-    function displayVulnerability(vuln) {
-      const item = ensureBilingualFinding(vuln);
-      const bilingual = item.bilingual;
-      return {
-        文件: item.file || "",
-        行号: item.line || 0,
-        漏洞类型: bilingual.type.zh,
-        漏洞类型_en: bilingual.type.en,
-        严重级别: bilingual.severity.zh,
-        严重级别_en: bilingual.severity.en,
-        CWE: item.cwe || "",
-        置信度: bilingual.confidence.zh,
-        置信度_en: bilingual.confidence.en,
-        风险分: item.risk_score || 0,
-        检测引擎: (bilingual.engines || []).map(engine => engine.zh),
-        检测引擎_en: (bilingual.engines || []).map(engine => engine.en),
-        补丁模式: bilingual.patch_mode.zh,
-        补丁模式_en: bilingual.patch_mode.en,
-        修复原因: bilingual.patch_reason.zh,
-        修复原因_en: bilingual.patch_reason.en,
-        模型: item.model_used || null
-      };
-    }
-
-    function skippedDisplayItem(item) {
-      if (!item || typeof item !== "object") {
-        return { 文件: String(item || ""), 原因: "文件分析失败，未返回详细原因。", 原因_en: "File analysis failed without details." };
-      }
-      return {
-        文件: item.file || "",
-        检测器: item.detector || "",
-        原因: item.reason_zh || "文件分析失败，未返回详细原因。",
-        原因_en: item.reason_en || "File analysis failed without details."
-      };
-    }
-
-    function buildDisplay(data) {
-      if (data.display && data.display.zh) return data.display;
-      const vulnerabilities = Array.isArray(data.vulnerabilities) ? data.vulnerabilities : [];
-      const skippedDetails = Array.isArray(data.skipped_details) ? data.skipped_details : [];
-      let message = "未检测到漏洞。";
-      if (vulnerabilities.length > 0) {
-        message = `检测到 ${vulnerabilities.length} 个漏洞。`;
-      } else if (skippedDetails.length > 0 || (data.skipped_files || []).length > 0) {
-        message = "未生成漏洞结果，部分文件分析失败，请查看跳过文件。";
-      } else if (String(data.ai_mode || "").toLowerCase() === "cloud") {
-        message = "未发现漏洞，因此未调用模型生成补丁。";
-      }
-      return {
-        zh: {
-          summary: {
-            分析模式: engineLabelFromMode(data.ai_mode) || String(data.ai_mode || ""),
-            漏洞数量: typeof data.count === "number" ? data.count : vulnerabilities.length,
-            是否调用模型: data.api_called ? "是" : "否",
-            使用模型: Array.isArray(data.api_models) ? data.api_models : [],
-            跳过文件数量: skippedDetails.length || (data.skipped_files || []).length || 0
-          },
-          message,
-          vulnerabilities: vulnerabilities.map(displayVulnerability),
-          skipped_files: skippedDetails.length > 0
-            ? skippedDetails.map(skippedDisplayItem)
-            : (data.skipped_files || []).map(file => skippedDisplayItem({ file }))
-        }
-      };
-    }
-
-    function formatBilingualResult(data) {
-      if (!data || typeof data !== "object" || Array.isArray(data)) return data;
-      const formatted = { ...data };
-      formatted.languages = Array.isArray(formatted.languages)
-        ? formatted.languages
-        : supportedLanguages.slice();
-      formatted.vulnerabilities = Array.isArray(formatted.vulnerabilities)
-        ? formatted.vulnerabilities.map(ensureBilingualFinding)
-        : [];
-      formatted.display = buildDisplay(formatted);
-      return formatted;
-    }
-
-    function visibleResult(data) {
-      return {
-        中文结果: data.display ? data.display.zh : {},
-        原始JSON: data
-      };
-    }
-
-    async function wait(ms) {
-      return new Promise(resolve => setTimeout(resolve, ms));
-    }
-
-    async function refreshHealth() {
-      try {
-        await call("/health");
-        serverV.innerHTML = '<span class="ok">在线</span>';
-      } catch {
-        serverV.innerHTML = '<span class="bad">离线</span>';
-      }
-    }
-
-    function fillSummary(data) {
-      const count = (typeof data.count === "number")
-        ? data.count
-        : ((data.vulnerabilities || []).length || 0);
-      countV.textContent = String(count);
-      aiV.textContent = engineLabelFromMode(data.ai_mode) || selectedAiLabel();
-      patchV.textContent = (data.vulnerabilities || []).length > 0 ? "已生成" : "无";
-    }
-
-    function engineLabelFromMode(mode) {
-      const m = String(mode || "").toLowerCase();
-      if (m === "rule") return "规则引擎";
-      if (m === "cloud") return "云端认知引擎";
-      if (m === "local") return "本地认知引擎";
-      return "";
-    }
-
-    function selectedAiLabel() {
-      const base = aiModeEl.options[aiModeEl.selectedIndex].text;
-      const model = selectedModelName();
-      return model ? `${base} · ${model}` : base;
-    }
-
-    function selectedModelName() {
-      return String(modelNameEl.value || "").trim();
-    }
-
-    function currentModelPayload() {
-      const modelName = selectedModelName();
-      return modelName || null;
-    }
-
-    function syncModelHint() {
-      const mode = aiModeEl.value;
-      if (mode === "cloud") {
-        const def = modelCatalog.cloud.default_model ? `（默认：${modelCatalog.cloud.default_model}）` : "";
-        modelHintEl.textContent = `云端模式模型来自 .env ${def}`.trim();
-        modelNameEl.disabled = false;
-        return;
-      }
-      if (mode === "local") {
-        const def = modelCatalog.local.default_model ? `（默认：${modelCatalog.local.default_model}）` : "";
-        modelHintEl.textContent = `本地模式模型来自 .env ${def}`.trim();
-        modelNameEl.disabled = false;
-        return;
-      }
-      modelHintEl.textContent = "规则引擎模式不会使用模型。";
-      modelNameEl.disabled = true;
-    }
-
-    function modeModelConfig(mode) {
-      if (mode === "cloud") return modelCatalog.cloud || { default_model: null, models: [] };
-      if (mode === "local") return modelCatalog.local || { default_model: null, models: [] };
-      return { default_model: null, models: [] };
-    }
-
-    function syncModelOptions() {
-      const mode = aiModeEl.value;
-      const cfg = modeModelConfig(mode);
-      const previous = selectedModelName();
-      modelNameEl.innerHTML = "";
-
-      const defaultLabel = cfg.default_model
-        ? `使用默认模型（${cfg.default_model}）`
-        : "使用默认模型";
-      modelNameEl.append(new Option(defaultLabel, ""));
-
-      const models = Array.isArray(cfg.models) ? cfg.models : [];
-      for (const model of models) {
-        modelNameEl.append(new Option(model, model));
-      }
-
-      if (previous && models.includes(previous)) {
-        modelNameEl.value = previous;
-      } else {
-        modelNameEl.value = "";
-      }
-      syncModelHint();
-      aiV.textContent = selectedAiLabel();
-    }
-
-    async function loadModelCatalog() {
-      try {
-        const cfg = await call("/config/models");
-        if (cfg && typeof cfg === "object") {
-          modelCatalog = {
-            cloud: cfg.cloud || { default_model: null, models: [] },
-            local: cfg.local || { default_model: null, models: [] }
-          };
-        }
-      } catch {
-        modelCatalog = {
-          cloud: { default_model: null, models: [] },
-          local: { default_model: null, models: [] }
-        };
-      }
-      syncModelOptions();
-    }
-
-    function setAiRunning(prefix) {
-      aiV.textContent = prefix + " " + selectedAiLabel();
-    }
-
-    document.getElementById("analyzeInputBtn").addEventListener("click", async () => {
-      const input_type = document.getElementById("inputType").value;
-      const ai_mode = document.getElementById("aiMode").value;
-      const model_name = currentModelPayload();
-      const code = document.getElementById("codeInput").value;
-      const repo_url = document.getElementById("repoUrl").value;
-      show("分析中，请稍候...");
-      setAiRunning("运行中：");
-      try {
-        const task = await call("/analyze-input-async", "POST", { input_type, ai_mode, model_name, code, repo_url });
-        const jobId = task.job_id;
-        while (true) {
-          const job = await call(`/jobs/${jobId}`, "GET");
-          show({
-            状态: job.status,
-            阶段: job.stage,
-            进度: `${job.progress}%`,
-            消息: job.message
-          });
-          if (job.status === "completed") {
-            const formattedResult = formatBilingualResult(job.result || {});
-            fillSummary(formattedResult);
-            lastAnalysisResult = formattedResult;
-            show(visibleResult(formattedResult));
-            break;
-          }
-          if (job.status === "failed") {
-            const err = job.error || "未知错误";
-            if (String(err).includes("克隆仓库失败")) {
-              aiV.textContent = "未进入引擎流程（克隆失败）";
-            } else {
-              aiV.textContent = "分析失败";
-            }
-            countV.textContent = "0";
-            patchV.textContent = "失败";
-            lastAnalysisResult = null;
-            show(`分析失败：${err}`);
-            break;
-          }
-          await wait(700);
-        }
-      } catch (e) {
-        show(String(e));
-      }
-    });
-
-    document.getElementById("resetBtn").addEventListener("click", async () => {
-      aiV.textContent = "系统操作";
-      try { show(await call("/reset", "POST")); }
-      catch (e) { show(String(e)); }
-    });
-
-    document.getElementById("testsBtn").addEventListener("click", async () => {
-      show("正在运行演示测试，请稍候...");
-      aiV.textContent = "测试流程";
-      try {
-        const data = await call("/run-tests", "POST");
-        if (data.auto_generated) {
-          patchV.textContent = "已自动生成";
-        }
-        show(data);
-      }
-      catch (e) { show(String(e)); }
-    });
-
-    document.getElementById("graphBtn").addEventListener("click", async () => {
-      aiV.textContent = "图分析";
-      try { show(await call("/graph")); }
-      catch (e) { show(String(e)); }
-    });
-
-    document.getElementById("kgBtn").addEventListener("click", async () => {
-      if (!lastAnalysisResult || !Array.isArray(lastAnalysisResult.vulnerabilities) || lastAnalysisResult.vulnerabilities.length === 0) {
-        show("请先完成一次漏洞分析，再查看知识图谱。");
-        return;
-      }
-      aiV.textContent = "知识图谱";
-      try {
-        const data = await call("/knowledge-graph", "POST", {
-          vulnerabilities: lastAnalysisResult.vulnerabilities,
-          ai_mode: aiModeEl.value,
-          model_name: currentModelPayload(),
-          sync_neo4j: true
-        });
-        show(data);
-      } catch (e) {
-        show(String(e));
-      }
-    });
-
-    aiModeEl.addEventListener("change", () => {
-      syncModelOptions();
-      aiV.textContent = selectedAiLabel();
-    });
-
-    modelNameEl.addEventListener("change", () => {
-      aiV.textContent = selectedAiLabel();
-    });
-
-    try {
-      loadModelCatalog();
-      refreshHealth();
-    } catch (e) {
-      show("初始化失败: " + String(e));
-    }
-  </script>
+  <script src="/ui/app.js"></script>
 </body>
 </html>
-

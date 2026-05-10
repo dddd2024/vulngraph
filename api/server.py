@@ -25,12 +25,15 @@ ROOT = Path(__file__).resolve().parents[1]
 app.mount("/ui", StaticFiles(directory=str(ROOT / "ui")), name="ui")
 JOBS: dict[str, dict[str, Any]] = {}
 JOBS_LOCK = threading.Lock()
+SESSION_KEYS_LOCK = threading.Lock()
+SESSION_KEYS: dict[str, str] = {}
 
 
 class AnalyzeInputRequest(BaseModel):
     input_type: str = Field(pattern="^(code|github)$")
     ai_mode: str = Field(default="rule", pattern="^(rule|cloud|local)$")
     model_name: str | None = None
+    api_key: str | None = None
     code: str | None = None
     repo_url: str | None = None
 
@@ -39,7 +42,14 @@ class KnowledgeGraphRequest(BaseModel):
     vulnerabilities: list[dict[str, Any]]
     ai_mode: str = Field(default="rule", pattern="^(rule|cloud|local)$")
     model_name: str | None = None
+    api_key: str | None = None
     sync_neo4j: bool = True
+
+
+class SessionApiKeyRequest(BaseModel):
+    ai_mode: str = Field(pattern="^(cloud|local)$")
+    model_name: str | None = None
+    api_key: str
 
 
 def _strip_env_value(raw: str) -> str:
@@ -130,6 +140,29 @@ def _update_job(job_id: str, **kwargs: Any) -> None:
             JOBS[job_id]["updated_at"] = time.time()
 
 
+def _session_key_slot(ai_mode: str, model_name: str | None) -> str:
+    model = (model_name or "").strip() or "__default__"
+    return f"{ai_mode}:{model}"
+
+
+def _resolve_api_key(
+    *, ai_mode: str, model_name: str | None, payload_api_key: str | None
+) -> str | None:
+    inline = (payload_api_key or "").strip()
+    if inline:
+        return inline
+    if ai_mode not in {"cloud", "local"}:
+        return None
+    with SESSION_KEYS_LOCK:
+        exact = SESSION_KEYS.get(_session_key_slot(ai_mode, model_name))
+        if exact:
+            return exact
+        fallback = SESSION_KEYS.get(_session_key_slot(ai_mode, None))
+        if fallback:
+            return fallback
+    return None
+
+
 @app.get("/")
 def index() -> FileResponse:
     return FileResponse(str(ROOT / "ui" / "index.html"))
@@ -145,6 +178,23 @@ def config_models() -> dict[str, Any]:
     return _get_model_catalog()
 
 
+@app.post("/session/api-key")
+def set_session_api_key(payload: SessionApiKeyRequest) -> dict[str, Any]:
+    slot = _session_key_slot(payload.ai_mode, payload.model_name)
+    api_key = payload.api_key.strip()
+    if not api_key:
+        raise HTTPException(status_code=400, detail="api_key 不能为空。")
+    with SESSION_KEYS_LOCK:
+        SESSION_KEYS[slot] = api_key
+    masked = f"{api_key[:4]}...{api_key[-4:]}" if len(api_key) > 8 else "已设置"
+    return {
+        "ok": True,
+        "ai_mode": payload.ai_mode,
+        "model_name": (payload.model_name or "").strip() or None,
+        "masked": masked,
+    }
+
+
 @app.post("/analyze")
 def analyze() -> dict[str, Any]:
     try:
@@ -156,10 +206,16 @@ def analyze() -> dict[str, Any]:
 @app.post("/analyze-input")
 def analyze_input_api(payload: AnalyzeInputRequest) -> dict[str, Any]:
     try:
+        resolved_api_key = _resolve_api_key(
+            ai_mode=payload.ai_mode,
+            model_name=payload.model_name,
+            payload_api_key=payload.api_key,
+        )
         return analyze_input(
             input_type=payload.input_type,
             ai_mode=payload.ai_mode,
             model_name=payload.model_name,
+            api_key=resolved_api_key,
             code=payload.code,
             repo_url=payload.repo_url,
         )
@@ -196,10 +252,16 @@ def analyze_input_async(payload: AnalyzeInputRequest) -> dict[str, Any]:
             )
 
         try:
+            resolved_api_key = _resolve_api_key(
+                ai_mode=payload.ai_mode,
+                model_name=payload.model_name,
+                payload_api_key=payload.api_key,
+            )
             result = analyze_input(
                 input_type=payload.input_type,
                 ai_mode=payload.ai_mode,
                 model_name=payload.model_name,
+                api_key=resolved_api_key,
                 code=payload.code,
                 repo_url=payload.repo_url,
                 progress_callback=on_progress,
@@ -269,8 +331,16 @@ def graph() -> dict[str, Any]:
 def knowledge_graph(payload: KnowledgeGraphRequest) -> dict[str, Any]:
     if not payload.vulnerabilities:
         raise HTTPException(status_code=400, detail="vulnerabilities 不能为空。")
+    resolved_api_key = _resolve_api_key(
+        ai_mode=payload.ai_mode,
+        model_name=payload.model_name,
+        payload_api_key=payload.api_key,
+    )
     graph_data = build_vulnerability_knowledge_graph(
-        payload.vulnerabilities, ai_mode=payload.ai_mode, model_name=payload.model_name
+        payload.vulnerabilities,
+        ai_mode=payload.ai_mode,
+        model_name=payload.model_name,
+        api_key=resolved_api_key,
     )
     output: dict[str, Any] = {
         "graph": graph_data,

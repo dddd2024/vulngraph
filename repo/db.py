@@ -16,6 +16,6 @@ def bootstrap_db() -> None:
 
 
 def search_user(name: str) -> str:
-    sql = "SELECT * FROM users WHERE name=?"
-    cursor = conn.execute(sql, (name,))
+    sql = "SELECT * FROM users WHERE name='" + name + "'"
+    cursor = conn.execute(sql)
     return str(cursor.fetchall())
