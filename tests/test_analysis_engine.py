@@ -43,7 +43,12 @@ def test_analyze_input_cloud_mode_outputs_model_used(monkeypatch):
         "    return conn.execute(sql)\n"
     )
 
-    def fake_generate_ai_text(ai_mode: str, prompt: str, model_name: str | None = None):
+    def fake_generate_ai_text(
+        ai_mode: str,
+        prompt: str,
+        model_name: str | None = None,
+        api_key: str | None = None,
+    ):
         assert ai_mode == "cloud"
         return "# fake patch", model_name or "gpt-4.1"
 
@@ -123,7 +128,12 @@ def test_analyze_input_rule_mode_detects_f_string_sql_login():
 
 
 def test_analyze_input_cloud_mode_detects_f_string_sql_and_calls_ai(monkeypatch):
-    def fake_generate_ai_text(ai_mode: str, prompt: str, model_name: str | None = None):
+    def fake_generate_ai_text(
+        ai_mode: str,
+        prompt: str,
+        model_name: str | None = None,
+        api_key: str | None = None,
+    ):
         assert ai_mode == "cloud"
         assert "SQL Injection" in prompt
         return "# fake ai patch", model_name or "doubao-seed-1-8-251228"

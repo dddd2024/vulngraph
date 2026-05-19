@@ -1,14 +1,11 @@
 from __future__ import annotations
 
 import difflib
-import json
-import os
 import re
 import shutil
 import subprocess
 import tempfile
 import time
-import urllib.error
 import urllib.request
 import zipfile
 from pathlib import Path
@@ -20,14 +17,9 @@ from detector.vuln_detector import (
     detect_privilege_escalation,
     detect_sql_injection,
 )
-from env_config import get_cloud_client_kwargs, get_cloud_model, load_project_env
-
-try:
-    from openai import OpenAI
-except Exception:  # pragma: no cover
-    OpenAI = None  # type: ignore[assignment]
-
-load_project_env()
+from llm.client import LLMClient
+from llm.exceptions import LLMError
+from llm.prompts import build_patch_prompt
 
 SUPPORTED_LANGUAGES = ["zh-CN", "en-US"]
 
@@ -437,71 +429,11 @@ def _build_display(
     }
 
 
-def _call_cloud_ai(
-    prompt: str, model_name: str | None = None, api_key: str | None = None
-) -> tuple[str, str]:
-    selected_model = (model_name or "").strip()
-
-    # 未指定模型且未显式传入 API Key 时，优先使用 Copilot CLI。
-    if not selected_model and not (api_key or "").strip():
-        cp = subprocess.run(
-            ["gh", "copilot", "-p", prompt],
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="ignore",
-        )
-        if cp.returncode == 0 and cp.stdout.strip():
-            lines = []
-            for line in cp.stdout.splitlines():
-                line = line.rstrip()
-                if not line:
-                    continue
-                if line.startswith(("Changes", "Requests", "Tokens")):
-                    continue
-                lines.append(line)
-            cleaned = "\n".join(lines).strip()
-            if cleaned:
-                return cleaned, "copilot-cli-default"
-
-    # 次级回退：OpenAI API（兼容旧配置）
-    if OpenAI is None:
-        raise RuntimeError("OpenAI SDK 不可用，且无法使用 Copilot CLI。")
-    client = OpenAI(**get_cloud_client_kwargs(api_key_override=api_key))
-    used_model = selected_model or get_cloud_model("gpt-4.1")
-    resp = client.chat.completions.create(
-        model=used_model,
-        messages=[{"role": "user", "content": prompt}],
-    )
-    return (resp.choices[0].message.content or "").strip(), used_model
-
-
-def _call_local_ai(prompt: str, model_name: str | None = None) -> tuple[str, str]:
-    selected_model = (model_name or "").strip() or os.getenv("LOCAL_LLM_MODEL", "qwen2.5-coder:7b")
-    url = os.getenv("LOCAL_LLM_URL", "http://127.0.0.1:11434/api/generate")
-    body = json.dumps(
-        {
-            "model": selected_model,
-            "prompt": prompt,
-            "stream": False,
-        }
-    ).encode("utf-8")
-    req = urllib.request.Request(
-        url, data=body, headers={"Content-Type": "application/json"}, method="POST"
-    )
-    with urllib.request.urlopen(req, timeout=25) as resp:
-        payload = json.loads(resp.read().decode("utf-8"))
-    return str(payload.get("response", "")).strip(), selected_model
-
-
 def generate_ai_text(
     ai_mode: str, prompt: str, model_name: str | None = None, api_key: str | None = None
 ) -> tuple[str, str]:
-    if ai_mode == "cloud":
-        return _call_cloud_ai(prompt, model_name=model_name, api_key=api_key)
-    if ai_mode == "local":
-        return _call_local_ai(prompt, model_name=model_name)
-    raise ValueError(f"unsupported ai_mode for text generation: {ai_mode}")
+    client = LLMClient(ai_mode=ai_mode, model_name=model_name, api_key=api_key)
+    return client.generate_text(prompt)
 
 
 def _patch_with_ai(
@@ -516,13 +448,7 @@ def _patch_with_ai(
     if ai_mode == "rule":
         return rule_diff, rule_reason, "rule", None, False
 
-    prompt = (
-        "你是代码安全修复助手。请针对以下漏洞给出简短补丁（尽量 unified diff）。\n\n"
-        f"漏洞类型: {vuln['type']}\n"
-        f"文件: {vuln['file']}:{vuln['line']}\n"
-        f"原始代码片段:\n{original[:1200]}\n\n"
-        f"规则补丁候选:\n{rule_diff[:1200]}\n"
-    )
+    prompt = build_patch_prompt(vuln, original, rule_diff)
     try:
         if ai_mode in ("cloud", "local"):
             patch_text, used_model = generate_ai_text(
@@ -530,7 +456,7 @@ def _patch_with_ai(
             )
             patch_reason = "云端 AI 生成" if ai_mode == "cloud" else "本地 AI 生成"
             return patch_text, patch_reason, ai_mode, used_model, True
-    except (RuntimeError, urllib.error.URLError, TimeoutError) as exc:
+    except LLMError as exc:
         return (
             rule_diff,
             f"{rule_reason}（AI 不可用，已回退规则补丁：{exc}）",

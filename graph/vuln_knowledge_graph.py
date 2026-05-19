@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import os
 import re
-import urllib.error
 from typing import Any
 
-from analysis_engine import generate_ai_text
 from graph.neo4j_builder import GraphWriter
+from llm.client import LLMClient
+from llm.exceptions import LLMError
+from llm.prompts import build_graph_insight_prompt
 
 CASE_LIBRARY: dict[str, list[dict[str, str]]] = {
     "SQL Injection": [
@@ -91,21 +92,12 @@ def _ai_note(
     if ai_mode == "rule":
         return _rule_note(str(vuln.get("type", "Unknown")), cwe, cases, fixes), "rule"
 
-    prompt = (
-        "你是漏洞知识图谱生成助手。请基于以下公开优秀案例，生成一段 2-3 句的中文安全知识摘要，"
-        "用于连接“漏洞 -> 案例 -> 修复模式”。要求：简洁、可执行、不要编造。\n\n"
-        f"漏洞类型: {vuln.get('type', 'Unknown')}\n"
-        f"CWE: {cwe}\n"
-        f"案例参考: {cases}\n"
-        f"修复模式: {fixes}\n"
-        f"当前漏洞上下文: file={vuln.get('file', '')}, line={vuln.get('line', 0)}, severity={vuln.get('severity', '')}"
-    )
+    prompt = build_graph_insight_prompt(vuln, cwe, cases, fixes)
     try:
-        note, _ = generate_ai_text(
-            ai_mode, prompt, model_name=model_name, api_key=api_key
-        )
+        client = LLMClient(ai_mode=ai_mode, model_name=model_name, api_key=api_key)
+        note, _ = client.generate_text(prompt)
         return note, ai_mode
-    except (RuntimeError, urllib.error.URLError, TimeoutError, ValueError) as exc:
+    except LLMError as exc:
         note = _rule_note(str(vuln.get("type", "Unknown")), cwe, cases, fixes)
         return f"{note}（AI 不可用，回退规则摘要：{exc}）", "rule-fallback"
 

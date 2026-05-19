@@ -35,3 +35,25 @@ def get_cloud_client_kwargs(api_key_override: str | None = None) -> dict[str, An
 def get_cloud_model(default_model: str = "gpt-4.1") -> str:
     return os.getenv("OPENAI_MODEL") or os.getenv("DOUBAO_MODEL") or default_model
 
+
+def get_llm_timeout(default: int = 25) -> int:
+    value = os.getenv("LLM_TIMEOUT")
+    if not value:
+        return default
+    try:
+        timeout = int(value)
+    except ValueError:
+        return default
+    return timeout if timeout > 0 else default
+
+
+def get_llm_max_retries(default: int = 0) -> int:
+    value = os.getenv("LLM_MAX_RETRIES")
+    if not value:
+        return default
+    try:
+        retries = int(value)
+    except ValueError:
+        return default
+    return retries if retries >= 0 else default
+
