@@ -54,11 +54,6 @@ class LLMClient:
         return parse_patch_json(content)
 
     def _generate_cloud_text(self, prompt: str) -> tuple[str, str]:
-        if self.model_name is None and self.api_key is None:
-            copilot_result = self._try_copilot_cli(prompt)
-            if copilot_result is not None:
-                return copilot_result
-
         if OpenAI is None:
             raise LLMConfigError("OpenAI SDK is unavailable.")
 
@@ -73,10 +68,16 @@ class LLMClient:
                 messages=[{"role": "user", "content": prompt}],
             )
         except RuntimeError as exc:
+            if self.model_name is None and self.api_key is None:
+                copilot_result = self._try_copilot_cli(prompt)
+                if copilot_result is not None:
+                    return copilot_result
             raise LLMConfigError(str(exc)) from exc
         except Exception as exc:
+            detail = str(exc).strip()
+            suffix = f": {detail}" if detail else ""
             raise LLMConnectionError(
-                f"cloud LLM request failed: {type(exc).__name__}"
+                f"cloud LLM request failed: {type(exc).__name__}{suffix}"
             ) from exc
 
         content = (response.choices[0].message.content or "").strip()
