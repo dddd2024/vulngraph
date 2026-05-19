@@ -409,6 +409,12 @@
       .replace(/>/g, "&gt;");
   }
 
+  function escapeAttr(s) {
+    return escapeHtml(s)
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  }
+
   function selectFinding(idx) {
     selectedIndex = idx;
     const nodes = els.findingsList.querySelectorAll(".finding-item");
@@ -440,6 +446,161 @@
 
   function setRawJson(data) {
     els.rawOut.textContent = JSON.stringify(data, null, 2);
+  }
+
+  function renderCallGraph(data) {
+    const edges = Array.isArray(data && data.edges) ? data.edges : [];
+    if (edges.length === 0) {
+      els.graphOut.innerHTML = '<div class="empty">未发现函数调用关系</div>';
+      return;
+    }
+
+    const functions = new Set();
+    const inDegree = new Map();
+    const outDegree = new Map();
+    edges.forEach((edge) => {
+      const source = String(edge.source || "").trim();
+      const target = String(edge.target || "").trim();
+      if (!source || !target) return;
+      functions.add(source);
+      functions.add(target);
+      outDegree.set(source, (outDegree.get(source) || 0) + 1);
+      inDegree.set(target, (inDegree.get(target) || 0) + 1);
+      if (!inDegree.has(source)) inDegree.set(source, inDegree.get(source) || 0);
+      if (!outDegree.has(target)) outDegree.set(target, outDegree.get(target) || 0);
+    });
+
+    const functionList = Array.from(functions).sort();
+    const entryCandidates = functionList
+      .filter((name) => (inDegree.get(name) || 0) === 0 && (outDegree.get(name) || 0) > 0)
+      .sort((a, b) => (outDegree.get(b) || 0) - (outDegree.get(a) || 0) || a.localeCompare(b));
+    const topCalled = functionList
+      .filter((name) => (inDegree.get(name) || 0) > 0)
+      .sort((a, b) => (inDegree.get(b) || 0) - (inDegree.get(a) || 0) || a.localeCompare(b))
+      .slice(0, 8);
+    const maxCalled = topCalled.length ? topCalled[0] : "无";
+
+    const chipHtml = (items, countMap, emptyText) => {
+      if (!items.length) return '<span class="muted">' + emptyText + "</span>";
+      return items.slice(0, 8).map((name) => {
+        const count = countMap ? (countMap.get(name) || 0) : 0;
+        const suffix = count ? " · " + count : "";
+        return '<span class="chip">' + escapeHtml(name) + escapeHtml(suffix) + "</span>";
+      }).join("");
+    };
+
+    const rows = edges.map((edge, idx) => {
+      const source = String(edge.source || "");
+      const target = String(edge.target || "");
+      return (
+        "<tr>" +
+        "<td>" + String(idx + 1) + "</td>" +
+        "<td>" + escapeHtml(source) + "</td>" +
+        "<td>" + escapeHtml(target) + "</td>" +
+        "</tr>"
+      );
+    }).join("");
+
+    els.graphOut.innerHTML =
+      '<div class="graph-summary-grid">' +
+      '<div class="mini-kpi"><div class="kpi-label">函数数量</div><div class="kpi-value">' + functionList.length + "</div></div>" +
+      '<div class="mini-kpi"><div class="kpi-label">调用关系</div><div class="kpi-value">' + edges.length + "</div></div>" +
+      '<div class="mini-kpi"><div class="kpi-label">入口候选</div><div class="kpi-value">' + entryCandidates.length + "</div></div>" +
+      '<div class="mini-kpi"><div class="kpi-label">被调用最多</div><div class="kpi-value">' + escapeHtml(maxCalled) + "</div></div>" +
+      "</div>" +
+      '<div class="chip-row"><strong>入口候选函数</strong>' + chipHtml(entryCandidates, outDegree, "无") + "</div>" +
+      '<div class="chip-row"><strong>热门被调用函数</strong>' + chipHtml(topCalled, inDegree, "无") + "</div>" +
+      '<div class="graph-table-wrap">' +
+      '<table class="graph-table">' +
+      "<thead><tr><th>#</th><th>调用方</th><th>被调用方</th></tr></thead>" +
+      "<tbody>" + rows + "</tbody>" +
+      "</table>" +
+      "</div>";
+  }
+
+  function renderKnowledgeGraph(data) {
+    const nodes = Array.isArray(data && data.nodes) ? data.nodes : [];
+    const edges = Array.isArray(data && data.edges) ? data.edges : [];
+    const summary = data && data.summary ? data.summary : {};
+    if (nodes.length === 0) {
+      els.graphOut.innerHTML = '<div class="empty">暂无漏洞知识图谱数据</div>';
+      return;
+    }
+
+    const nodeById = new Map();
+    nodes.forEach((node) => nodeById.set(String(node.id || ""), node));
+
+    const outgoing = new Map();
+    edges.forEach((edge) => {
+      const source = String(edge.source || "");
+      if (!outgoing.has(source)) outgoing.set(source, []);
+      outgoing.get(source).push(edge);
+    });
+
+    const targetNodes = (sourceId, kind) => {
+      return (outgoing.get(sourceId) || [])
+        .map((edge) => nodeById.get(String(edge.target || "")))
+        .filter((node) => node && (!kind || node.kind === kind));
+    };
+
+    const vulnerabilityNodes = nodes.filter((node) => node && node.kind === "vulnerability");
+    if (vulnerabilityNodes.length === 0) {
+      els.graphOut.innerHTML = '<div class="empty">暂无漏洞知识图谱数据</div>';
+      return;
+    }
+
+    const cards = vulnerabilityNodes.map((vuln) => {
+      const vulnId = String(vuln.id || "");
+      const cweNode = targetNodes(vulnId, "cwe")[0];
+      const insightNode = targetNodes(vulnId, "ai_insight")[0];
+      const insightId = insightNode ? String(insightNode.id || "") : "";
+      const fixNodes = insightId ? targetNodes(insightId, "fix_pattern") : [];
+      const caseNodes = targetNodes(vulnId, "reference_case");
+      const cwe = vuln.cwe || (cweNode && cweNode.title) || "-";
+      const fileLine = (vuln.file || "-") + ":" + (vuln.line || 0);
+
+      const fixHtml = fixNodes.length
+        ? fixNodes.map((fix) => '<span class="chip">' + escapeHtml(fix.title || fix.id || "-") + "</span>").join("")
+        : '<span class="muted">无</span>';
+      const caseHtml = caseNodes.length
+        ? caseNodes.map((item) => {
+          const title = escapeHtml(item.title || item.id || "参考案例");
+          const summaryText = escapeHtml(item.summary || "");
+          const url = String(item.source_url || "").trim();
+          const link = url
+            ? '<a href="' + escapeAttr(url) + '" target="_blank" rel="noopener noreferrer">' + title + "</a>"
+            : "<strong>" + title + "</strong>";
+          return "<li>" + link + (summaryText ? '<div class="muted">' + summaryText + "</div>" : "") + "</li>";
+        }).join("")
+        : '<li class="muted">无</li>';
+
+      return (
+        '<article class="kg-card">' +
+        '<div class="kg-card-head">' +
+        '<div><div class="muted">漏洞类型</div><h3>' + escapeHtml(vuln.title || "Unknown") + "</h3></div>" +
+        '<span class="badge ' + riskClass(vuln.risk_score) + '">Risk ' + escapeHtml(vuln.risk_score ?? "-") + "</span>" +
+        "</div>" +
+        '<div class="meta-grid">' +
+        '<div><span>文件与行号</span><strong>' + escapeHtml(fileLine) + "</strong></div>" +
+        '<div><span>Severity</span><strong>' + escapeHtml(vuln.severity || "-") + "</strong></div>" +
+        '<div><span>Risk Score</span><strong>' + escapeHtml(vuln.risk_score ?? "-") + "</strong></div>" +
+        '<div><span>CWE</span><strong>' + escapeHtml(cwe) + "</strong></div>" +
+        "</div>" +
+        '<div class="kg-section"><div class="muted">AI Insight</div><p>' + escapeHtml((insightNode && insightNode.text) || "无") + "</p></div>" +
+        '<div class="kg-section"><div class="muted">Fix Pattern</div><div class="chip-row">' + fixHtml + "</div></div>" +
+        '<div class="kg-section"><div class="muted">Reference Case</div><ul class="case-list">' + caseHtml + "</ul></div>" +
+        "</article>"
+      );
+    }).join("");
+
+    els.graphOut.innerHTML =
+      '<div class="graph-summary-grid">' +
+      '<div class="mini-kpi"><div class="kpi-label">漏洞节点</div><div class="kpi-value">' + escapeHtml(summary.vulnerability_count ?? vulnerabilityNodes.length) + "</div></div>" +
+      '<div class="mini-kpi"><div class="kpi-label">知识节点</div><div class="kpi-value">' + escapeHtml(summary.node_count ?? nodes.length) + "</div></div>" +
+      '<div class="mini-kpi"><div class="kpi-label">关系数量</div><div class="kpi-value">' + escapeHtml(summary.edge_count ?? edges.length) + "</div></div>" +
+      '<div class="mini-kpi"><div class="kpi-label">AI 模式</div><div class="kpi-value">' + escapeHtml(summary.ai_mode || "-") + "</div></div>" +
+      "</div>" +
+      cards;
   }
 
   async function refreshHealth() {
@@ -605,7 +766,8 @@
   async function showGraph() {
     try {
       const data = await call("/graph", "GET");
-      els.graphOut.textContent = JSON.stringify(data, null, 2);
+      renderCallGraph(data);
+      setRawJson(data);
     } catch (e) {
       setError("调用图获取失败：" + String(e));
     }
@@ -624,7 +786,8 @@
         api_key: currentApiKey(),
         sync_neo4j: true
       });
-      els.graphOut.textContent = JSON.stringify(data, null, 2);
+      renderKnowledgeGraph(data.graph || data);
+      setRawJson(data);
     } catch (e) {
       setError("知识图谱获取失败：" + String(e));
     }
