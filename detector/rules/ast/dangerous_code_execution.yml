@@ -1,0 +1,17 @@
+rules:
+  - id: AST-DCE-001
+    name: Dangerous Code Execution
+    type: ast
+    severity: ERROR
+    engine: ast
+    language: python
+    cwe: CWE-95
+    confidence: high
+    message: "Dangerous use of eval/exec/compile detected."
+    enabled: true
+    pattern:
+      kind: call
+      names:
+        - eval
+        - exec
+        - compile

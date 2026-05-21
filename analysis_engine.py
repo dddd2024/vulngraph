@@ -12,11 +12,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
-from detector.vuln_detector import (
-    detect_path_traversal,
-    detect_privilege_escalation,
-    detect_sql_injection,
-)
+from detector.core.runner import DetectorRunner
 from llm.client import LLMClient
 from llm.exceptions import LLMError
 from llm.prompts import build_patch_prompt
@@ -27,6 +23,29 @@ VULNERABILITY_TYPE_ZH = {
     "SQL Injection": "SQL 注入",
     "Path Traversal": "路径穿越",
     "Privilege Escalation": "权限提升",
+    "Dangerous Code Execution": "危险代码执行",
+    "Command Injection": "命令注入",
+    "Unsafe Deserialization": "不安全反序列化",
+    "Hardcoded Secret": "硬编码密钥",
+    "Weak Cryptography": "弱加密",
+    "Debug Mode Enabled": "调试模式",
+    "Insecure TLS Verification": "不安全 TLS 验证",
+    # 多语言检测器漏洞类型
+    "Buffer Overflow": "缓冲区溢出",
+    "Format String Vulnerability": "格式化字符串漏洞",
+    "Memory Leak": "内存泄漏",
+    "Cross-Site Scripting (XSS)": "跨站脚本攻击 (XSS)",
+    "Code Injection / Eval Usage": "代码注入 / Eval 使用",
+    "Insecure Deserialization": "不安全反序列化",
+    "XML External Entity (XXE)": "XML 外部实体攻击 (XXE)",
+    "LDAP Injection": "LDAP 注入",
+    "Log Injection": "日志注入",
+    "Insecure Random Number": "不安全随机数",
+    "Race Condition (TOCTOU)": "竞态条件 (TOCTOU)",
+    "Null Pointer Dereference": "空指针解引用",
+    "Integer Overflow": "整数溢出",
+    "SSRF": "服务器端请求伪造",
+    "Hardcoded Credentials": "硬编码凭证",
 }
 
 SEVERITY_ZH = {
@@ -46,6 +65,11 @@ CONFIDENCE_ZH = {
 ENGINE_ZH = {
     "ast": "AST 静态分析",
     "pattern": "模式匹配",
+    "plugin": "插件检测",
+    "regex": "正则匹配",
+    "tree-sitter": "Tree-sitter 分析",
+    "ml": "深度学习检测",
+    "ml-fallback": "ML 模式检测",
 }
 
 PATCH_MODE_ZH = {
@@ -59,6 +83,7 @@ AI_MODE_ZH = {
     "rule": "规则引擎",
     "cloud": "云端认知引擎",
     "local": "本地认知引擎",
+    "ml": "深度学习增强",
 }
 
 PATCH_REASON_EN = {
@@ -498,6 +523,28 @@ def _build_finding_output(
         "SQL Injection": {"cwe": "CWE-89", "confidence": "high"},
         "Path Traversal": {"cwe": "CWE-22", "confidence": "medium"},
         "Privilege Escalation": {"cwe": "CWE-269", "confidence": "medium"},
+        "Dangerous Code Execution": {"cwe": "CWE-95", "confidence": "high"},
+        "Command Injection": {"cwe": "CWE-78", "confidence": "high"},
+        "Unsafe Deserialization": {"cwe": "CWE-502", "confidence": "high"},
+        "Hardcoded Secret": {"cwe": "CWE-798", "confidence": "medium"},
+        "Weak Cryptography": {"cwe": "CWE-327", "confidence": "medium"},
+        "Debug Mode Enabled": {"cwe": "CWE-489", "confidence": "medium"},
+        "Insecure TLS Verification": {"cwe": "CWE-295", "confidence": "medium"},
+        # 多语言检测器漏洞类型
+        "Buffer Overflow": {"cwe": "CWE-120", "confidence": "high"},
+        "Format String Vulnerability": {"cwe": "CWE-134", "confidence": "high"},
+        "Memory Leak": {"cwe": "CWE-401", "confidence": "medium"},
+        "Cross-Site Scripting (XSS)": {"cwe": "CWE-79", "confidence": "high"},
+        "Code Injection / Eval Usage": {"cwe": "CWE-94", "confidence": "high"},
+        "XML External Entity (XXE)": {"cwe": "CWE-611", "confidence": "high"},
+        "LDAP Injection": {"cwe": "CWE-90", "confidence": "high"},
+        "Log Injection": {"cwe": "CWE-117", "confidence": "medium"},
+        "Insecure Random Number": {"cwe": "CWE-338", "confidence": "medium"},
+        "Race Condition (TOCTOU)": {"cwe": "CWE-362", "confidence": "medium"},
+        "Null Pointer Dereference": {"cwe": "CWE-476", "confidence": "high"},
+        "Integer Overflow": {"cwe": "CWE-190", "confidence": "medium"},
+        "SSRF": {"cwe": "CWE-918", "confidence": "high"},
+        "Hardcoded Credentials": {"cwe": "CWE-798", "confidence": "medium"},
     }
     meta = taxonomy.get(vuln["type"], {"cwe": "CWE-Other", "confidence": "low"})
     severity = vuln.get("severity", "ERROR")
@@ -532,31 +579,15 @@ def _analyze_repo(
 ) -> dict[str, Any]:
     findings: list[dict[str, Any]] = []
     skipped_details: list[dict[str, str]] = []
+    # 使用 DetectorRunner 统一执行 AST + Plugin + Regex 引擎
+    runner = DetectorRunner()
     for py_file in _collect_py_files(repo_root):
-        ast_findings: list[dict[str, Any]] = []
-        ast_detectors = [
-            ("SQL 注入 AST 检测", detect_sql_injection),
-            ("路径穿越 AST 检测", detect_path_traversal),
-            ("权限提升 AST 检测", detect_privilege_escalation),
-        ]
-        for detector_name, detector in ast_detectors:
-            try:
-                ast_findings.extend(detector(str(py_file)))
-            except Exception as exc:
-                skipped_details.append(
-                    _build_skipped_detail(py_file, repo_root, detector_name, exc)
-                )
-
-        for f in ast_findings:
-            f["engine"] = "ast"
-        findings.extend(ast_findings)
-
         try:
-            source = py_file.read_text(encoding="utf-8", errors="ignore")
-            findings.extend(_pattern_engine_findings(py_file, source))
+            file_findings = runner.scan_file(str(py_file))
+            findings.extend(file_findings)
         except Exception as exc:
             skipped_details.append(
-                _build_skipped_detail(py_file, repo_root, "模式匹配检测", exc)
+                _build_skipped_detail(py_file, repo_root, "检测引擎", exc)
             )
 
     findings = _dedup_findings(findings)
