@@ -291,6 +291,36 @@ def _regex_scan_javascript(file_path: str) -> list[dict[str, Any]]:
             "detail": f"Potential XSS: {m.group(1)} assignment with unsanitized content",
         })
 
+    # XSS: Express 服务端响应 sink (res.send/write/end/render) + 用户输入
+    _express_xss_source = re.compile(
+        r'req(?:uest)?\.(?:query|body|params)', re.IGNORECASE,
+    )
+    for m in re.finditer(
+        r'\bres\.\s*(send|write|end|render)\s*\(', source,
+    ):
+        sink_name = f"res.{m.group(1)}"
+        # 检查附近上下文是否有用户输入源
+        ctx_start = max(0, m.start() - 300)
+        ctx_end = min(len(source), m.end() + 100)
+        ctx = source[ctx_start:ctx_end]
+        has_user_input = bool(_express_xss_source.search(ctx))
+        has_concat = '+' in ctx and ('"' in ctx or "'" in ctx or '`' in ctx)
+        if has_user_input or has_concat:
+            confidence = "high" if has_user_input else "medium"
+            findings.append({
+                "type": "Cross-Site Scripting (XSS)",
+                "file": file_path,
+                "line": _line_of(source, m.start()),
+                "severity": "ERROR",
+                "confidence": confidence,
+                "engine": "regex",
+                "symbol": sink_name,
+                "detail": (
+                    f"Potential Express XSS: {sink_name}() with "
+                    f"{'user input' if has_user_input else 'string concatenation'}"
+                ),
+            })
+
     # Eval: eval() / setTimeout() / setInterval() with string argument
     for m in re.finditer(r'\b(eval|Function)\s*\(', source):
         findings.append({

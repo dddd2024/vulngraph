@@ -55,6 +55,17 @@ XSS_DANGEROUS_SINKS = [
     "document.write", "document.writeln"
 ]
 
+# Express 服务端响应 XSS sink
+EXPRESS_XSS_SINKS = [
+    "res.send", "res.write", "res.end", "res.render",
+]
+
+# Express 用户输入源
+EXPRESS_USER_INPUT_SOURCES = [
+    "req.query", "req.body", "req.params",
+    "request.query", "request.body", "request.params",
+]
+
 
 class JavaScriptDetector:
     """
@@ -231,7 +242,7 @@ class JavaScriptDetector:
         return findings
 
     def _detect_xss(self, parsed: ParsedCode) -> list[Vulnerability]:
-        """检测 XSS 跨站脚本 - 包括赋值操作和函数调用"""
+        """检测 XSS 跨站脚本 - 包括赋值操作、函数调用和 Express 响应 sink"""
         findings = []
         source_lines = parsed.source.split("\n")
 
@@ -279,7 +290,82 @@ class JavaScriptDetector:
                     detail=f"Potential XSS: {prop} assignment with unsanitized content"
                 ))
 
+        # 方法3: 检查 Express 服务端响应 sink (res.send/write/end/render)
+        # 构建一个简单的函数级变量追踪，检测 req.query/req.body 赋值是否流入 sink
+        self._detect_express_xss(parsed, source_lines, findings)
+
         return findings
+
+    def _detect_express_xss(
+        self,
+        parsed: ParsedCode,
+        source_lines: list[str],
+        findings: list[Vulnerability],
+    ) -> None:
+        """检测 Express 服务端响应中的 XSS (res.send/write/end/render + 用户输入)."""
+        source_lower = parsed.source.lower()
+
+        # 快速检查：整个文件中是否存在 Express 用户输入源
+        has_user_source = any(
+            src in source_lower for src in EXPRESS_USER_INPUT_SOURCES
+        )
+        if not has_user_source:
+            return
+
+        # 检查是否存在 Express sink
+        has_express_sink = any(
+            sink in source_lower for sink in EXPRESS_XSS_SINKS
+        )
+        if not has_express_sink:
+            return
+
+        # 逐行扫描 Express sink 调用
+        for i, line in enumerate(source_lines, 1):
+            line_lower = line.lower()
+
+            # 检查是否包含 Express sink
+            matched_sink = None
+            for sink in EXPRESS_XSS_SINKS:
+                if sink in line_lower:
+                    matched_sink = sink
+                    break
+
+            if matched_sink is None:
+                continue
+
+            # 检测模式1: sink 参数中包含字符串拼接 (+)
+            has_concat = self._has_string_concatenation(parsed, i)
+
+            # 检测模式2: 上下文中出现 req.query / req.body / req.params
+            context = self._get_line_context(parsed, i, context_lines=3).lower()
+            has_req_input = any(
+                src in context for src in EXPRESS_USER_INPUT_SOURCES
+            )
+
+            # 检测模式3: 同一函数内变量来自 req.query/req.body 后流入 sink
+            # 简化实现：检查 sink 行附近是否有变量引用了用户输入
+            has_variable_flow = False
+            if not has_req_input:
+                # 扩大上下文到整个函数体（最多20行）
+                func_context = self._get_line_context(parsed, i, context_lines=10).lower()
+                has_variable_flow = any(
+                    src in func_context for src in EXPRESS_USER_INPUT_SOURCES
+                )
+
+            if has_concat or has_req_input or has_variable_flow:
+                confidence = "high" if (has_req_input or has_variable_flow) else "medium"
+                findings.append(Vulnerability(
+                    type="Cross-Site Scripting (XSS)",
+                    file=parsed.file_path,
+                    line=i,
+                    severity="ERROR",
+                    confidence=confidence,
+                    symbol=matched_sink,
+                    detail=(
+                        f"Potential Express XSS: {matched_sink}() with "
+                        f"{'user input' if (has_req_input or has_variable_flow) else 'string concatenation'}"
+                    ),
+                ))
 
     def _detect_eval_usage(self, parsed: ParsedCode) -> list[Vulnerability]:
         """检测不安全的 eval 使用"""

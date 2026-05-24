@@ -167,6 +167,7 @@ def _write_code_snippet(
     diagnostic: dict[str, Any] = {
         "language_hint": language_hint,
         "auto_detected": False,
+        "detected_language": None,
         "used_filename": "",
         "error": None,
     }
