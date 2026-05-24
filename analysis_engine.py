@@ -135,6 +135,69 @@ def _collect_code_files(root: Path) -> list[Path]:
     return results
 
 
+# 语言到文件名的映射
+_LANGUAGE_TO_FILENAME: dict[str, str] = {
+    "python": "input.py",
+    "javascript": "input.js",
+    "typescript": "input.ts",
+    "java": "Vulnerable.java",
+    "c": "input.c",
+    "cpp": "input.cpp",
+    "php": "input.php",
+    "go": "input.go",
+    "rust": "input.rs",
+}
+
+
+def _write_code_snippet(
+    repo_root: Path, code: str, language_hint: str | None = None
+) -> tuple[Path, str, dict[str, Any]]:
+    """根据代码语言将代码片段写入对应文件.
+
+    Args:
+        repo_root: 临时目录根路径
+        code: 代码内容
+        language_hint: 用户指定的语言提示，None或"auto"表示自动检测
+
+    Returns:
+        (写入的文件路径, 检测到的语言, 诊断信息字典)
+    """
+    from parser.language_detector import detect_language
+
+    diagnostic: dict[str, Any] = {
+        "language_hint": language_hint,
+        "auto_detected": False,
+        "used_filename": "",
+        "error": None,
+    }
+
+    # 确定语言
+    detected_lang: str
+    if language_hint and language_hint.lower() not in ("auto", ""):
+        detected_lang = language_hint.lower()
+        diagnostic["auto_detected"] = False
+    else:
+        detected_lang = detect_language(code, filename=None)
+        diagnostic["auto_detected"] = True
+
+    diagnostic["detected_language"] = detected_lang
+
+    # 选择文件名
+    filename = _LANGUAGE_TO_FILENAME.get(detected_lang)
+    if not filename:
+        # 未识别语言，使用默认文件名但记录
+        filename = "input.txt"
+        diagnostic["error"] = f"未识别的语言: {detected_lang}，使用默认文件名"
+
+    diagnostic["used_filename"] = filename
+
+    # 写入文件
+    file_path = repo_root / filename
+    file_path.write_text(code, encoding="utf-8")
+
+    return file_path, detected_lang, diagnostic
+
+
 def _to_diff(original: str, updated: str, file_path: str) -> str:
     return "".join(
         difflib.unified_diff(
@@ -606,16 +669,37 @@ def _analyze_repo(
 ) -> dict[str, Any]:
     findings: list[dict[str, Any]] = []
     skipped_details: list[dict[str, str]] = []
+    scanned_files: list[dict[str, Any]] = []
     # 使用 LanguageRouter 统一调度多语言检测
     router = LanguageRouter()
     for code_file in _collect_code_files(repo_root):
+        file_record: dict[str, Any] = {
+            "file": str(code_file.relative_to(repo_root)).replace("\\", "/"),
+            "detected_language": None,
+            "detector": None,
+            "finding_count": 0,
+            "status": "pending",
+            "error": None,
+        }
         try:
+            # 检测语言
+            detected_lang = router.detect_language(str(code_file))
+            file_record["detected_language"] = detected_lang
+            file_record["status"] = "scanning"
+
+            # 扫描文件
             file_findings = router.scan_file(str(code_file))
+            file_record["finding_count"] = len(file_findings)
+            file_record["status"] = "completed"
+            file_record["detector"] = "LanguageRouter"
             findings.extend(file_findings)
         except Exception as exc:
+            file_record["status"] = "error"
+            file_record["error"] = str(exc)
             skipped_details.append(
                 _build_skipped_detail(code_file, repo_root, "检测引擎", exc)
             )
+        scanned_files.append(file_record)
 
     findings = _dedup_findings(findings)
     out_findings = [
@@ -644,6 +728,7 @@ def _analyze_repo(
         "api_models": api_models,
         "skipped_files": skipped_files,
         "skipped_details": skipped_details,
+        "scanned_files": scanned_files,
         "display": _build_display(
             vulnerabilities=out_findings,
             skipped_details=skipped_details,
@@ -662,6 +747,7 @@ def analyze_input(
     code: str | None = None,
     repo_url: str | None = None,
     progress_callback: Any | None = None,
+    language_hint: str | None = None,
 ) -> dict[str, Any]:
     def emit(stage: str, progress: int, message: str) -> None:
         if callable(progress_callback):
@@ -673,11 +759,16 @@ def analyze_input(
         repo_root.mkdir(parents=True, exist_ok=True)
         emit("prepare", 5, "初始化临时分析目录")
 
+        code_snippet_diagnostic: dict[str, Any] | None = None
+
         if input_type == "code":
             if not code or not code.strip():
                 raise ValueError("代码输入不能为空。")
-            (repo_root / "input.py").write_text(code, encoding="utf-8")
-            emit("prepare", 15, "已写入代码片段")
+            file_path, detected_lang, diagnostic = _write_code_snippet(
+                repo_root, code, language_hint
+            )
+            code_snippet_diagnostic = diagnostic
+            emit("prepare", 15, f"已写入代码片段 ({detected_lang}: {file_path.name})")
         elif input_type == "github":
             if not repo_url or not repo_url.strip():
                 raise ValueError("仓库 URL 不能为空。")
@@ -713,6 +804,9 @@ def analyze_input(
         analysis["model_name"] = (model_name or "").strip() or None
         if input_type == "github":
             analysis["repo_url"] = repo_url
+        # 添加代码片段诊断信息
+        if code_snippet_diagnostic:
+            analysis["code_snippet_info"] = code_snippet_diagnostic
         emit("done", 100, "分析完成")
         return analysis
 

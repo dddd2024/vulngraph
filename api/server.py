@@ -36,6 +36,10 @@ class AnalyzeInputRequest(BaseModel):
     api_key: str | None = None
     code: str | None = None
     repo_url: str | None = None
+    language: str = Field(
+        default="auto",
+        pattern="^(auto|python|javascript|typescript|java|c|cpp|php|go|rust)$"
+    )
 
 
 class KnowledgeGraphRequest(BaseModel):
@@ -218,6 +222,7 @@ def analyze_input_api(payload: AnalyzeInputRequest) -> dict[str, Any]:
             api_key=resolved_api_key,
             code=payload.code,
             repo_url=payload.repo_url,
+            language_hint=payload.language if payload.language != "auto" else None,
         )
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -265,6 +270,7 @@ def analyze_input_async(payload: AnalyzeInputRequest) -> dict[str, Any]:
                 code=payload.code,
                 repo_url=payload.repo_url,
                 progress_callback=on_progress,
+                language_hint=payload.language if payload.language != "auto" else None,
             )
             _update_job(
                 job_id,

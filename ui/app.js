@@ -21,6 +21,7 @@
     modelName: document.getElementById("modelName"),
     modelHint: document.getElementById("modelHint"),
     codeInput: document.getElementById("codeInput"),
+    languageSelect: document.getElementById("languageSelect"),
     repoUrl: document.getElementById("repoUrl"),
     analyzeInputBtn: document.getElementById("analyzeInputBtn"),
     resetBtn: document.getElementById("resetBtn"),
@@ -743,7 +744,8 @@
       model_name: currentModelPayload(),
       api_key: currentApiKey(),
       code: els.codeInput.value,
-      repo_url: els.repoUrl.value
+      repo_url: els.repoUrl.value,
+      language: inputType === "code" ? els.languageSelect.value : "auto"
     };
 
     try {

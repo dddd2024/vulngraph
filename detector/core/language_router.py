@@ -158,49 +158,107 @@ class LanguageRouter:
         return runner.scan_file(file_path)
 
     def _scan_javascript(self, file_path: str) -> list[dict[str, Any]]:
-        """JavaScript / TypeScript 文件：使用 tree_sitter_detectors 或 regex 回退."""
+        """JavaScript / TypeScript 文件：使用 tree_sitter_detectors + regex 回退."""
+        results: list[dict[str, Any]] = []
+        tree_sitter_ok = False
+
         if _TREE_SITTER_AVAILABLE:
-            from detector.tree_sitter_detectors import detect_javascript_vulnerabilities
-            vulns = detect_javascript_vulnerabilities(file_path)
-            results = []
-            for v in vulns:
-                finding = dict(v)
-                finding.setdefault("engine", "tree-sitter")
-                finding.setdefault("confidence", "medium")
-                results.append(finding)
-            return results
-        else:
-            return _regex_scan_javascript(file_path)
+            try:
+                from detector.tree_sitter_detectors import detect_javascript_vulnerabilities
+                vulns = detect_javascript_vulnerabilities(file_path)
+                for v in vulns:
+                    finding = dict(v)
+                    finding.setdefault("engine", "tree-sitter")
+                    finding.setdefault("confidence", "medium")
+                    results.append(finding)
+                tree_sitter_ok = True
+            except Exception as exc:
+                logger.warning("JavaScript Tree-sitter 检测失败 (%s): %s", file_path, exc)
+
+        # Tree-sitter 失败或返回空结果时，执行 regex fallback
+        if not tree_sitter_ok or len(results) == 0:
+            try:
+                regex_results = _regex_scan_javascript(file_path)
+                # 合并并去重（基于 type + line）
+                existing_keys = {(r.get("type"), r.get("line")) for r in results}
+                for r in regex_results:
+                    key = (r.get("type"), r.get("line"))
+                    if key not in existing_keys:
+                        results.append(r)
+                        existing_keys.add(key)
+            except Exception as exc:
+                if not tree_sitter_ok:
+                    logger.warning("JavaScript regex 回退也失败 (%s): %s", file_path, exc)
+
+        return results
 
     def _scan_java(self, file_path: str) -> list[dict[str, Any]]:
-        """Java 文件：使用 java_detector 或 regex 回退."""
+        """Java 文件：使用 java_detector + regex 回退."""
+        results: list[dict[str, Any]] = []
+        tree_sitter_ok = False
+
         if _TREE_SITTER_AVAILABLE:
-            from detector.java_detector import detect_java_vulnerabilities
-            vulns = detect_java_vulnerabilities(file_path)
-            results = []
-            for v in vulns:
-                finding = dict(v)
-                finding.setdefault("engine", "tree-sitter")
-                finding.setdefault("confidence", "medium")
-                results.append(finding)
-            return results
-        else:
-            return _regex_scan_java(file_path)
+            try:
+                from detector.java_detector import detect_java_vulnerabilities
+                vulns = detect_java_vulnerabilities(file_path)
+                for v in vulns:
+                    finding = dict(v)
+                    finding.setdefault("engine", "tree-sitter")
+                    finding.setdefault("confidence", "medium")
+                    results.append(finding)
+                tree_sitter_ok = True
+            except Exception as exc:
+                logger.warning("Java Tree-sitter 检测失败 (%s): %s", file_path, exc)
+
+        # Tree-sitter 失败或返回空结果时，执行 regex fallback
+        if not tree_sitter_ok or len(results) == 0:
+            try:
+                regex_results = _regex_scan_java(file_path)
+                existing_keys = {(r.get("type"), r.get("line")) for r in results}
+                for r in regex_results:
+                    key = (r.get("type"), r.get("line"))
+                    if key not in existing_keys:
+                        results.append(r)
+                        existing_keys.add(key)
+            except Exception as exc:
+                if not tree_sitter_ok:
+                    logger.warning("Java regex 回退也失败 (%s): %s", file_path, exc)
+
+        return results
 
     def _scan_c_cpp(self, file_path: str) -> list[dict[str, Any]]:
-        """C/C++ 文件：使用 c_detector 或 regex 回退."""
+        """C/C++ 文件：使用 c_detector + regex 回退."""
+        results: list[dict[str, Any]] = []
+        tree_sitter_ok = False
+
         if _TREE_SITTER_AVAILABLE:
-            from detector.c_detector import detect_c_vulnerabilities
-            vulns = detect_c_vulnerabilities(file_path)
-            results = []
-            for v in vulns:
-                finding = dict(v)
-                finding.setdefault("engine", "tree-sitter")
-                finding.setdefault("confidence", "medium")
-                results.append(finding)
-            return results
-        else:
-            return _regex_scan_c_cpp(file_path)
+            try:
+                from detector.c_detector import detect_c_vulnerabilities
+                vulns = detect_c_vulnerabilities(file_path)
+                for v in vulns:
+                    finding = dict(v)
+                    finding.setdefault("engine", "tree-sitter")
+                    finding.setdefault("confidence", "medium")
+                    results.append(finding)
+                tree_sitter_ok = True
+            except Exception as exc:
+                logger.warning("C/C++ Tree-sitter 检测失败 (%s): %s", file_path, exc)
+
+        # Tree-sitter 失败或返回空结果时，执行 regex fallback
+        if not tree_sitter_ok or len(results) == 0:
+            try:
+                regex_results = _regex_scan_c_cpp(file_path)
+                existing_keys = {(r.get("type"), r.get("line")) for r in results}
+                for r in regex_results:
+                    key = (r.get("type"), r.get("line"))
+                    if key not in existing_keys:
+                        results.append(r)
+                        existing_keys.add(key)
+            except Exception as exc:
+                if not tree_sitter_ok:
+                    logger.warning("C/C++ regex 回退也失败 (%s): %s", file_path, exc)
+
+        return results
 
 
 # =========================================================================

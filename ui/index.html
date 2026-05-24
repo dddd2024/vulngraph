@@ -75,8 +75,25 @@
         </div>
 
         <div id="codePanel" class="input-panel">
-          <label for="codeInput">代码输入</label>
-          <textarea id="codeInput" class="code-editor" spellcheck="false" placeholder="def search_user(name):&#10;    sql = 'SELECT * FROM users WHERE name=' + name&#10;    return conn.execute(sql).fetchall()"></textarea>
+          <div class="form-grid">
+            <div style="flex: 1;">
+              <label for="codeInput">代码输入</label>
+              <textarea id="codeInput" class="code-editor" spellcheck="false" placeholder="def search_user(name):&#10;    sql = 'SELECT * FROM users WHERE name=' + name&#10;    return conn.execute(sql).fetchall()"></textarea>
+            </div>
+            <div style="width: 160px;">
+              <label for="languageSelect">语言</label>
+              <select id="languageSelect">
+                <option value="auto">Auto Detect</option>
+                <option value="python">Python</option>
+                <option value="javascript">JavaScript</option>
+                <option value="typescript">TypeScript</option>
+                <option value="java">Java</option>
+                <option value="c">C</option>
+                <option value="cpp">C++</option>
+              </select>
+              <div class="hint" style="margin-top: 4px;">选择代码语言，Auto 会自动检测</div>
+            </div>
+          </div>
         </div>
 
         <div id="repoPanel" class="input-panel hidden">
