@@ -75,14 +75,14 @@
         </div>
 
         <div id="codePanel" class="input-panel">
-          <label for="codeInput">代码输入（Python）</label>
+          <label for="codeInput">代码输入</label>
           <textarea id="codeInput" class="code-editor" spellcheck="false" placeholder="def search_user(name):&#10;    sql = 'SELECT * FROM users WHERE name=' + name&#10;    return conn.execute(sql).fetchall()"></textarea>
         </div>
 
         <div id="repoPanel" class="input-panel hidden">
           <label for="repoUrl">GitHub 仓库 URL</label>
           <input id="repoUrl" placeholder="https://github.com/owner/repo">
-          <div class="hint">选择 GitHub Repository 时，后端会克隆仓库并分析 Python 文件。</div>
+          <div class="hint">选择 GitHub Repository 时，后端会克隆仓库并分析多语言代码文件（Python、JavaScript、TypeScript、Java、C/C++ 等）。</div>
         </div>
 
         <div class="actions">
@@ -110,6 +110,15 @@
       <section id="findings" class="card two-col">
         <div>
           <h2 id="titleFindings">Findings</h2>
+          <div class="lang-filter-bar" id="langFilterBar">
+            <button class="lang-chip active" data-lang="all">All</button>
+            <button class="lang-chip" data-lang="Python">Python</button>
+            <button class="lang-chip" data-lang="JavaScript">JavaScript</button>
+            <button class="lang-chip" data-lang="TypeScript">TypeScript</button>
+            <button class="lang-chip" data-lang="Java">Java</button>
+            <button class="lang-chip" data-lang="C/C++">C/C++</button>
+          </div>
+          <div id="langSummary" class="lang-summary"></div>
           <div id="findingsList" class="findings-list"></div>
           <div id="findingsEmpty" class="empty">暂无漏洞结果。运行分析后会在此展示结构化发现。</div>
         </div>

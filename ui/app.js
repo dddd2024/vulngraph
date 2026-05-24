@@ -51,6 +51,7 @@
   let running = false;
   let apiKeysBySlot = {};
   let currentLang = "zh-CN";
+  let activeLangFilter = "all";
   const I18N = {
     "zh-CN": {
       productSub: "基于多模型协同检索增强的漏洞补丁生成",
@@ -338,7 +339,15 @@
     sortedFindings = vulns;
     els.findingsList.innerHTML = "";
 
-    if (vulns.length === 0) {
+    // 语言汇总
+    renderLangSummary(vulns);
+
+    // 语言过滤
+    const filtered = activeLangFilter === "all"
+      ? vulns
+      : vulns.filter(v => (v.language || "Python") === activeLangFilter);
+
+    if (filtered.length === 0) {
       selectedIndex = -1;
       els.findingsEmpty.classList.remove("hidden");
       els.findingDetail.textContent = "未发现漏洞。";
@@ -347,23 +356,43 @@
     }
 
     els.findingsEmpty.classList.add("hidden");
-    vulns.forEach((item, idx) => {
+    filtered.forEach((item, idx) => {
       const risk = Number(item.risk_score) || 0;
+      const lang = item.language || "Python";
       const row = document.createElement("button");
       row.type = "button";
       row.className = "finding-item";
       row.innerHTML =
-        '<div class="finding-title">' + (item.type || "Unknown") + "</div>" +
+        '<div class="finding-title">' + (item.type || "Unknown") + '</div>' +
         '<div class="finding-meta">' +
         '<span class="badge ' + riskClass(risk) + '">Risk ' + risk + "</span>" +
+        '<span class="lang-badge">' + escapeHtml(lang) + '</span>' +
         '<span>' + severityLabel(item.severity) + "</span> · " +
         '<span>' + (item.file || "-") + ":" + (item.line || 0) + "</span>" +
         "</div>";
-      row.addEventListener("click", () => selectFinding(idx));
+      row.addEventListener("click", () => selectFinding(idx, filtered));
       els.findingsList.appendChild(row);
     });
 
-    selectFinding(0);
+    selectFinding(0, filtered);
+  }
+
+  function renderLangSummary(vulns) {
+    const langCounts = {};
+    (vulns || []).forEach(v => {
+      const lang = v.language || "Python";
+      langCounts[lang] = (langCounts[lang] || 0) + 1;
+    });
+    const langSummaryEl = document.getElementById("langSummary");
+    if (!langSummaryEl) return;
+    const entries = Object.entries(langCounts).sort((a, b) => b[1] - a[1]);
+    if (entries.length === 0) {
+      langSummaryEl.innerHTML = "";
+      return;
+    }
+    langSummaryEl.innerHTML = entries.map(([lang, count]) =>
+      '<span class="lang-summary-item"><strong>' + escapeHtml(lang) + '</strong>: ' + count + '</span>'
+    ).join("");
   }
 
   function renderDetail(item) {
@@ -373,10 +402,12 @@
     }
     const engines = engineLabels(item.engines).join(", ") || "-";
     const modelUsed = item.model_used || "-";
+    const lang = item.language || "Python";
     els.findingDetail.innerHTML =
       '<div class="detail-grid">' +
       '<div class="k">严重级别</div><div class="v">' + severityLabel(item.severity) + "</div>" +
       '<div class="k">漏洞类型</div><div class="v">' + (item.type || "-") + "</div>" +
+      '<div class="k">语言</div><div class="v">' + escapeHtml(lang) + "</div>" +
       '<div class="k">CWE</div><div class="v">' + (item.cwe || "-") + "</div>" +
       '<div class="k">风险分</div><div class="v">' + (item.risk_score ?? "-") + "</div>" +
       '<div class="k">置信度</div><div class="v">' + confidenceLabel(item.confidence) + "</div>" +
@@ -415,11 +446,12 @@
       .replace(/'/g, "&#39;");
   }
 
-  function selectFinding(idx) {
+  function selectFinding(idx, filtered) {
     selectedIndex = idx;
+    const items = filtered || sortedFindings;
     const nodes = els.findingsList.querySelectorAll(".finding-item");
     nodes.forEach((node, i) => node.classList.toggle("active", i === idx));
-    const item = sortedFindings[idx];
+    const item = items[idx];
     renderDetail(item);
     const diffHtml = formatPatchDiff(item && item.patch);
     els.patchDiff.innerHTML = diffHtml;
@@ -835,6 +867,17 @@
       setTopbarState(els.topJob.textContent);
       refreshHealth();
       updateOverview(lastAnalysisResult || { vulnerabilities: [], ai_mode: els.aiMode.value });
+    });
+    // 语言过滤器事件
+    document.getElementById("langFilterBar").addEventListener("click", function (e) {
+      const chip = e.target.closest(".lang-chip");
+      if (!chip) return;
+      activeLangFilter = chip.dataset.lang || "all";
+      this.querySelectorAll(".lang-chip").forEach(c => c.classList.remove("active"));
+      chip.classList.add("active");
+      if (lastAnalysisResult) {
+        renderFindings(lastAnalysisResult);
+      }
     });
   }
 

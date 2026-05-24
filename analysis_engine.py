@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
-from detector.core.runner import DetectorRunner
+from detector.core.language_router import LanguageRouter
 from llm.client import LLMClient
 from llm.exceptions import LLMError
 from llm.prompts import build_patch_prompt
@@ -106,8 +106,33 @@ PATCH_REASON_EN = {
 }
 
 
-def _collect_py_files(root: Path) -> list[Path]:
-    return [p for p in root.rglob("*.py") if p.is_file()]
+# 多语言扫描支持的文件扩展名
+_CODE_EXTENSIONS: set[str] = {
+    ".py", ".js", ".jsx", ".ts", ".tsx", ".java",
+    ".go", ".php", ".c", ".h", ".cpp", ".cc", ".cxx", ".hpp", ".rs",
+}
+
+# 扫描时忽略的目录名
+_IGNORED_DIRS: set[str] = {
+    ".git", "node_modules", "dist", "build",
+    "__pycache__", ".venv", "venv", "target", ".idea",
+    ".vscode", ".settings", "vendor", "third_party",
+}
+
+
+def _collect_code_files(root: Path) -> list[Path]:
+    """收集仓库中所有支持语言的代码文件，忽略常见非代码目录."""
+    results: list[Path] = []
+    for p in root.rglob("*"):
+        if not p.is_file():
+            continue
+        if p.suffix.lower() not in _CODE_EXTENSIONS:
+            continue
+        # 检查路径中是否包含忽略目录
+        if any(part in _IGNORED_DIRS for part in p.parts):
+            continue
+        results.append(p)
+    return results
 
 
 def _to_diff(original: str, updated: str, file_path: str) -> str:
@@ -392,6 +417,7 @@ def _display_vulnerability(finding: dict[str, Any]) -> dict[str, Any]:
     return {
         "文件": finding.get("file", ""),
         "行号": finding.get("line", 0),
+        "语言": finding.get("language", "Python"),
         "漏洞类型": bilingual["type"]["zh"],
         "漏洞类型_en": bilingual["type"]["en"],
         "严重级别": bilingual["severity"]["zh"],
@@ -564,6 +590,7 @@ def _build_finding_output(
         "engines": vuln.get("engines", ["ast"]),
         "file": relative,
         "line": vuln.get("line", 0),
+        "language": vuln.get("language", "Python"),
         "patch_mode": patch_mode,
         "patch_reason": patch_reason,
         "patch": patch_text,
@@ -579,15 +606,15 @@ def _analyze_repo(
 ) -> dict[str, Any]:
     findings: list[dict[str, Any]] = []
     skipped_details: list[dict[str, str]] = []
-    # 使用 DetectorRunner 统一执行 AST + Plugin + Regex 引擎
-    runner = DetectorRunner()
-    for py_file in _collect_py_files(repo_root):
+    # 使用 LanguageRouter 统一调度多语言检测
+    router = LanguageRouter()
+    for code_file in _collect_code_files(repo_root):
         try:
-            file_findings = runner.scan_file(str(py_file))
+            file_findings = router.scan_file(str(code_file))
             findings.extend(file_findings)
         except Exception as exc:
             skipped_details.append(
-                _build_skipped_detail(py_file, repo_root, "检测引擎", exc)
+                _build_skipped_detail(code_file, repo_root, "检测引擎", exc)
             )
 
     findings = _dedup_findings(findings)
