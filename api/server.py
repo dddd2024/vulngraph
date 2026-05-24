@@ -6,8 +6,20 @@ import uuid
 from pathlib import Path
 from typing import Any
 
+import inspect
+
+import analysis_engine
 from analysis_engine import analyze_input
 from fastapi import FastAPI, HTTPException
+
+# 启动时打印调试信息，确认加载的是正确的模块
+print("=" * 60)
+print("[DEBUG] analysis_engine 模块信息:")
+print(f"  __file__: {analysis_engine.__file__}")
+print(f"  hasattr _write_code_snippet: {hasattr(analysis_engine, '_write_code_snippet')}")
+print(f"  hasattr _LANGUAGE_TO_FILENAME: {hasattr(analysis_engine, '_LANGUAGE_TO_FILENAME')}")
+print(f"  analyze_input 签名: {inspect.signature(analysis_engine.analyze_input)}")
+print("=" * 60)
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
