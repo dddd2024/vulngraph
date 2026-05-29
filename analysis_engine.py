@@ -394,6 +394,9 @@ def _dedup_findings(raw_findings: list[dict[str, Any]]) -> list[dict[str, Any]]:
             engines = merged[key]["engines"]
             if engine not in engines:
                 engines.append(engine)
+            # 合并 metadata：如果新 finding 有 metadata 而旧的没有，则合并
+            if "metadata" in f and "metadata" not in merged[key]:
+                merged[key]["metadata"] = f["metadata"]
     return list(merged.values())
 
 
@@ -646,13 +649,19 @@ def _build_finding_output(
         score_base -= 30
     if len(vuln.get("engines", [])) > 1:
         score_base += 5
+    # 处理 engines 字段：优先使用 engines，否则从 engine 构建
+    engines = vuln.get("engines")
+    if engines is None:
+        engine = vuln.get("engine", "ast")
+        engines = [engine]
+
     finding_output = {
         "type": vuln["type"],
         "severity": severity,
         "cwe": meta["cwe"],
         "confidence": meta["confidence"],
         "risk_score": max(0, min(score_base, 100)),
-        "engines": vuln.get("engines", ["ast"]),
+        "engines": engines,
         "file": relative,
         "line": vuln.get("line", 0),
         "language": vuln.get("language", "Python"),

@@ -1,8 +1,11 @@
 """污点分析引擎 – 基于 AST 的污点传播追踪检测.
 
-第一版特性：
+修复版本特性：
 - 单文件、函数内污点传播
 - 支持赋值传播、字符串拼接、f-string、format、函数调用返回值保守传播
+- 支持 arg_index 指定 sink 危险参数位置
+- 支持 propagators（如 os.path.join）传播但不报漏洞
+- 修复 sanitizer 状态污染：参数化 SQL 只抑制当前调用，secure_filename 只净化返回值
 - 检测 SQL Injection、Path Traversal、Command Injection 三类漏洞
 """
 
@@ -44,28 +47,52 @@ def _get_code_snippet(source: str, line: int, max_len: int = 80) -> str:
 
 
 def _match_source_pattern(node: ast.Call, source_patterns: list[dict[str, Any]]) -> dict[str, Any] | None:
-    """检查节点是否匹配污点源模式."""
+    """检查节点是否匹配污点源模式.
+
+    只支持精确匹配和明确后缀匹配，不支持宽泛匹配。
+    """
     call_name = qualified_name(node)
     for pattern in source_patterns:
         pattern_name = pattern.get("name", "")
-        # 支持精确匹配和前缀匹配
+        # 精确匹配或后缀匹配（如 request.args.get 匹配 .args.get）
         if call_name == pattern_name or call_name.endswith("." + pattern_name):
-            return pattern
-        # 特殊处理 request.args.get 等链式调用
-        if pattern_name.startswith("request.") and call_name.startswith("request."):
             return pattern
     return None
 
 
 def _match_sink_pattern(node: ast.Call, sink_patterns: list[dict[str, Any]]) -> dict[str, Any] | None:
-    """检查节点是否匹配污点汇模式."""
+    """检查节点是否匹配污点汇模式.
+
+    支持精确匹配、后缀匹配，以及处理链式调用和变量名模式。
+    """
     call_name = qualified_name(node)
     for pattern in sink_patterns:
         pattern_name = pattern.get("name", "")
+        # 精确匹配或后缀匹配
         if call_name == pattern_name or call_name.endswith("." + pattern_name):
             return pattern
-        # 处理方法调用（如 cursor.execute）
-        if "." in pattern_name and call_name.endswith(pattern_name.split(".")[-1]):
+        # 处理链式调用：Path(path).read_text 匹配 Path.read_text
+        # 将 call_name 中的 (...) 部分去掉再匹配
+        if "(" in call_name:
+            # 简化处理：检查是否包含 pattern_name 作为后缀
+            # 例如 Path(path).read_text 包含 Path.read_text 模式
+            simple_name = call_name.replace("(", "").replace(")", "").replace(" ", "")
+            if simple_name == pattern_name or simple_name.endswith("." + pattern_name):
+                return pattern
+        # 支持通配符前缀：*.read_text 匹配 p.read_text、path.read_text 等
+        if pattern_name.startswith("*."):
+            suffix = pattern_name[2:]  # 去掉 *. 前缀
+            if call_name.endswith("." + suffix) or call_name == suffix:
+                return pattern
+    return None
+
+
+def _match_propagator_pattern(node: ast.Call, propagator_patterns: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """检查节点是否匹配传播器模式."""
+    call_name = qualified_name(node)
+    for pattern in propagator_patterns:
+        pattern_name = pattern.get("name", "")
+        if call_name == pattern_name or call_name.endswith("." + pattern_name):
             return pattern
     return None
 
@@ -162,6 +189,28 @@ def _contains_tainted_variable(node: ast.AST, tainted_vars: dict[str, TaintVaria
     return found
 
 
+def _contains_tainted_variable_in_arg(
+    node: ast.Call,
+    arg_index: int,
+    tainted_vars: dict[str, TaintVariable]
+) -> list[TaintVariable]:
+    """检查指定位置的参数是否包含污点变量.
+
+    arg_index=-1 表示检查接收者（self），即调用该方法的对象。
+    """
+    if arg_index == -1:
+        # 检查接收者（self）
+        if isinstance(node.func, ast.Attribute):
+            receiver = node.func.value
+            return _contains_tainted_variable(receiver, tainted_vars)
+        return []
+    
+    if arg_index < len(node.args):
+        target_arg = node.args[arg_index]
+        return _contains_tainted_variable(target_arg, tainted_vars)
+    return []
+
+
 def _propagate_taint_through_binop(
     node: ast.BinOp,
     tainted_vars: dict[str, TaintVariable],
@@ -192,45 +241,6 @@ def _propagate_taint_through_joinedstr(
     return found
 
 
-def _propagate_taint_through_call(
-    node: ast.Call,
-    tainted_vars: dict[str, TaintVariable],
-    sanitizer_patterns: list[dict[str, Any]],
-    source: str,
-    source_line: int,
-    file_path: str,
-    source_code: str,
-) -> tuple[list[TaintVariable], bool, str]:
-    """通过函数调用传播污点，返回 (污点变量列表, 是否净化, 净化器名称)."""
-    # 首先检查是否是净化器
-    sanitizer_pattern = _match_sanitizer_pattern(node, sanitizer_patterns)
-    if sanitizer_pattern:
-        # 检查净化器条件
-        sanitizer_name = sanitizer_pattern.get("name", "")
-        condition = sanitizer_pattern.get("condition", "")
-
-        # 特殊处理 subprocess 安全调用
-        if condition == "shell_false_list_args" and _is_subprocess_safe(node):
-            return [], True, sanitizer_name
-
-        # 特殊处理 SQL 参数化查询
-        if condition == "has_params" and _is_sql_safe(node):
-            return [], True, sanitizer_name
-
-        # 一般净化器（如 secure_filename, shlex.quote）
-        if not condition or condition == "":
-            # 检查调用参数是否包含污点
-            found = _contains_tainted_variable(node, tainted_vars)
-            if found:
-                return [], True, sanitizer_name
-
-    # 检查调用参数是否包含污点（保守传播）
-    found = _contains_tainted_variable(node, tainted_vars)
-
-    # 对于返回值，保守地认为如果参数被污染，返回值也被污染
-    return found, False, ""
-
-
 class FunctionTaintAnalyzer(ast.NodeVisitor):
     """函数级污点分析器，在单个函数内追踪污点传播."""
 
@@ -257,6 +267,7 @@ class FunctionTaintAnalyzer(ast.NodeVisitor):
         self._source_patterns = rule_config.sources
         self._sink_patterns = rule_config.sinks
         self._sanitizer_patterns = rule_config.sanitizers
+        self._propagator_patterns = rule_config.propagators
 
     def analyze(self, tree: ast.AST) -> list[TaintFinding]:
         """分析 AST 树，返回检测到的漏洞."""
@@ -324,17 +335,65 @@ class FunctionTaintAnalyzer(ast.NodeVisitor):
                         self._tainted_vars[name] = taint_var
                         new_taints.append(taint_var)
             else:
-                # 检查污点传播或净化
-                found, sanitized, sanitizer_name = _propagate_taint_through_call(
-                    value, self._tainted_vars, self._sanitizer_patterns,
-                    "", 0, self.file_path, self.source_code
-                )
-                if sanitized:
-                    # 净化后的值，清除污点
-                    pass
-                elif found:
-                    # 传播污点
-                    new_taints = found
+                # 检查是否是净化器调用
+                sanitizer_pattern = _match_sanitizer_pattern(value, self._sanitizer_patterns)
+                if sanitizer_pattern:
+                    sanitizer_name = sanitizer_pattern.get("name", "")
+                    condition = sanitizer_pattern.get("condition", "")
+                    
+                    # 检查净化器参数是否包含污点
+                    found = _contains_tainted_variable(value, self._tainted_vars)
+                    
+                    # 一般净化器（如 secure_filename, shlex.quote）
+                    # 净化返回值，原变量保持不变
+                    if found and (not condition or condition == ""):
+                        sanitized = True
+                        new_taints = []  # 净化后的值视为安全
+                        # 创建净化后的变量（标记为已净化）
+                        for target in node.targets:
+                            target_names = self._extract_target_names(target)
+                            for name in target_names:
+                                # 复制污点信息但标记为已净化
+                                combined_steps: list[TaintTraceStep] = []
+                                for t in found:
+                                    combined_steps.extend(t.trace_steps)
+                                
+                                sanitize_step = TaintTraceStep(
+                                    file=self.file_path,
+                                    line=_get_node_line(node),
+                                    col=_get_node_col(node),
+                                    node_type="sanitizer",
+                                    code_snippet=_get_code_snippet(self.source_code, _get_node_line(node)),
+                                    variable=name,
+                                    description=f"净化器: {sanitizer_name}",
+                                )
+                                combined_steps.append(sanitize_step)
+                                
+                                taint_var = TaintVariable(
+                                    name=name,
+                                    tainted=True,  # 仍然标记为污点，但 sanitized=True
+                                    source=found[0].source if found else "",
+                                    source_line=found[0].source_line if found else 0,
+                                    sanitized=True,
+                                    sanitizer=sanitizer_name,
+                                    trace_steps=combined_steps,
+                                )
+                                self._tainted_vars[name] = taint_var
+                
+                # 检查是否是传播器（如 os.path.join）
+                elif not sanitized:
+                    propagator_pattern = _match_propagator_pattern(value, self._propagator_patterns)
+                    if propagator_pattern:
+                        # 传播器：传播污点但不报漏洞
+                        arg_index = propagator_pattern.get("arg_index", 0)
+                        found = _contains_tainted_variable_in_arg(value, arg_index, self._tainted_vars)
+                        if found:
+                            new_taints = found
+                    else:
+                        # 普通函数调用：保守传播
+                        found = _contains_tainted_variable(value, self._tainted_vars)
+                        if found:
+                            new_taints = found
 
         # 检查字符串拼接
         elif isinstance(value, ast.BinOp):
@@ -368,7 +427,7 @@ class FunctionTaintAnalyzer(ast.NodeVisitor):
             for target in node.targets:
                 target_names = self._extract_target_names(target)
                 for name in target_names:
-                    # 合合所有源污点的信息
+                    # 合并所有源污点的信息
                     combined_source = ", ".join(t.source for t in new_taints if t.source)
                     combined_source_line = min(t.source_line for t in new_taints if t.source_line) or _get_node_line(node)
                     combined_steps: list[TaintTraceStep] = []
@@ -401,36 +460,29 @@ class FunctionTaintAnalyzer(ast.NodeVisitor):
 
     def visit_Call(self, node: ast.Call) -> None:
         """处理函数调用，检查污点汇."""
-        # 首先检查是否是净化器调用（在污点汇检测之前）
-        sanitizer_pattern = _match_sanitizer_pattern(node, self._sanitizer_patterns)
-        if sanitizer_pattern:
-            sanitizer_name = sanitizer_pattern.get("name", "")
-            condition = sanitizer_pattern.get("condition", "")
-            
-            # 检查净化器条件
-            is_sanitized = False
-            
-            # 特殊处理 subprocess 安全调用
-            if condition == "shell_false_list_args" and _is_subprocess_safe(node):
-                is_sanitized = True
-            
-            # 特殊处理 SQL 参数化查询
-            if condition == "has_params" and _is_sql_safe(node):
-                is_sanitized = True
-            
-            # 如果满足净化条件，标记涉及的污点变量为已净化
-            if is_sanitized:
-                found = _contains_tainted_variable(node, self._tainted_vars)
-                for taint_var in found:
-                    taint_var.sanitized = True
-                    taint_var.sanitizer = sanitizer_name
-        
         # 检查是否是污点汇
         sink_pattern = _match_sink_pattern(node, self._sink_patterns)
         if sink_pattern:
-            # 检查调用参数是否包含污点
-            found = _contains_tainted_variable(node, self._tainted_vars)
+            # 获取 sink 的危险参数位置
+            arg_index = sink_pattern.get("arg_index", 0)
+            
+            # 只检查指定位置的参数
+            found = _contains_tainted_variable_in_arg(node, arg_index, self._tainted_vars)
 
+            # 检查是否是 SQL 参数化查询（特殊处理：只抑制当前调用）
+            call_name = qualified_name(node)
+            is_sql_execute = any(call_name.endswith(s) for s in ["execute", "executemany"])
+            
+            if is_sql_execute and len(node.args) >= 2:
+                # 参数化查询：第二个参数存在，当前调用安全
+                found = []
+            
+            # 检查是否是安全的 subprocess 调用（shell=False 且列表参数）
+            is_subprocess = call_name.startswith("subprocess.")
+            if is_subprocess and _is_subprocess_safe(node):
+                # 安全的 subprocess 调用，不报漏洞
+                found = []
+            
             # 检查是否经过净化
             sanitized = False
             sanitizer_name = ""
@@ -572,6 +624,7 @@ class TaintEngine:
             sources=sources,
             sinks=sinks,
             sanitizers=pattern.get("sanitizers", []),
+            propagators=pattern.get("propagators", []),
             rule_id=rule.id,
             rule_name=rule.name,
             severity=rule.severity,

@@ -7,6 +7,10 @@
 4. secure_filename 后进入 open 不报或降低置信度
 5. request.args.get → os.system 报 Command Injection
 6. subprocess.run(["cmd", user_input], shell=False) 不报 Command Injection
+7. subprocess.run(cmd, shell=True) 报 Command Injection
+8. os.path.join 单独出现不报 Path Traversal
+9. template.execute(user_input) 不应报 SQL Injection
+10. 参数化 SQL 后 name 再进入危险 f-string SQL 仍应报 SQL Injection
 """
 
 from __future__ import annotations
@@ -18,6 +22,8 @@ import pytest
 
 from detector.core.rule_loader import load_yaml_rules
 from detector.engines.taint_engine import TaintEngine
+from detector.core.runner import DetectorRunner
+from analysis_engine import analyze_input
 
 
 # ---------------------------------------------------------------------------
@@ -149,6 +155,70 @@ def search():
         Path(file_path).unlink(missing_ok=True)
 
 
+def test_sql_injection_after_safe_params_still_vulnerable(taint_engine: TaintEngine, taint_rules: list):
+    """测试参数化 SQL 后 name 再进入危险 f-string SQL 仍应报 SQL Injection."""
+    code = '''
+from flask import Flask, request
+import sqlite3
+
+app = Flask(__name__)
+
+@app.route("/search")
+def search():
+    name = request.args.get("name")
+    conn = sqlite3.connect("test.db")
+    cursor = conn.cursor()
+    # 第一次使用参数化查询（安全）
+    cursor.execute("SELECT * FROM users WHERE name=?", (name,))
+    # 第二次使用 f-string（危险）
+    sql = f"SELECT * FROM admins WHERE name='{name}'"
+    cursor.execute(sql)
+    return cursor.fetchall()
+'''
+    file_path = _write_temp_file(code)
+    try:
+        findings = taint_engine.scan_file(file_path, taint_rules)
+        
+        # 应该检测到 SQL Injection（第二次调用）
+        sql_findings = [f for f in findings if f.type == "SQL Injection"]
+        assert len(sql_findings) > 0
+        # 确保是第二次调用（f-string 那次）
+        lines = [f.line for f in sql_findings]
+        assert any(l > 12 for l in lines)  # 第二次 execute 在行 13
+    finally:
+        Path(file_path).unlink(missing_ok=True)
+
+
+def test_sql_injection_false_positive_template_execute(taint_engine: TaintEngine, taint_rules: list):
+    """测试误报：template.execute(user_input) 不应报 SQL Injection."""
+    code = '''
+from flask import Flask, request
+
+class Template:
+    def execute(self, code):
+        # 这不是 SQL 执行
+        return eval(code)
+
+app = Flask(__name__)
+template = Template()
+
+@app.route("/run")
+def run():
+    user_input = request.args.get("code")
+    result = template.execute(user_input)
+    return str(result)
+'''
+    file_path = _write_temp_file(code)
+    try:
+        findings = taint_engine.scan_file(file_path, taint_rules)
+        
+        # template.execute 不是 SQL sink，不应该报 SQL Injection
+        sql_findings = [f for f in findings if f.type == "SQL Injection"]
+        assert len(sql_findings) == 0
+    finally:
+        Path(file_path).unlink(missing_ok=True)
+
+
 # ---------------------------------------------------------------------------
 # Path Traversal 测试
 # ---------------------------------------------------------------------------
@@ -241,6 +311,59 @@ def read_file():
         Path(file_path).unlink(missing_ok=True)
 
 
+def test_path_traversal_os_path_join_alone_no_vuln(taint_engine: TaintEngine, taint_rules: list):
+    """测试误报：os.path.join(base, user_input) 单独出现不应报 Path Traversal."""
+    code = '''
+from flask import Flask, request
+import os
+
+app = Flask(__name__)
+
+@app.route("/join")
+def join_path():
+    base = "/safe/base"
+    user_input = request.args.get("path")
+    result = os.path.join(base, user_input)
+    return result
+'''
+    file_path = _write_temp_file(code)
+    try:
+        findings = taint_engine.scan_file(file_path, taint_rules)
+        
+        # os.path.join 是 propagator，单独使用不报漏洞
+        pt_findings = [f for f in findings if f.type == "Path Traversal"]
+        assert len(pt_findings) == 0
+    finally:
+        Path(file_path).unlink(missing_ok=True)
+
+
+def test_path_traversal_os_path_join_to_open(taint_engine: TaintEngine, taint_rules: list):
+    """测试 os.path.join 结果流入 open 时报 Path Traversal."""
+    code = '''
+from flask import Flask, request
+import os
+
+app = Flask(__name__)
+
+@app.route("/read")
+def read_file():
+    base = "/safe/base"
+    user_input = request.args.get("path")
+    full_path = os.path.join(base, user_input)
+    with open(full_path, "r") as f:
+        return f.read()
+'''
+    file_path = _write_temp_file(code)
+    try:
+        findings = taint_engine.scan_file(file_path, taint_rules)
+        
+        # os.path.join 结果流入 open，应该报 Path Traversal
+        pt_findings = [f for f in findings if f.type == "Path Traversal"]
+        assert len(pt_findings) > 0
+    finally:
+        Path(file_path).unlink(missing_ok=True)
+
+
 # ---------------------------------------------------------------------------
 # Command Injection 测试
 # ---------------------------------------------------------------------------
@@ -326,12 +449,12 @@ def run_command():
         
         # shell=True，应该检测到 Command Injection
         cmd_findings = [f for f in findings if f.type == "Command Injection"]
-        # 注意：当前污点引擎可能不检测 shell=True 条件
-        # 这个测试验证污点传播是否正确
-        # 如果检测到，检查污点追踪
-        if len(cmd_findings) > 0:
-            finding = cmd_findings[0]
-            assert finding.source == "request.args.get"
+        # 污点引擎会检测，因为 cmd 参数被污染
+        assert len(cmd_findings) > 0
+        
+        finding = cmd_findings[0]
+        assert finding.source == "request.args.get"
+        assert finding.sink == "subprocess.run"
     finally:
         Path(file_path).unlink(missing_ok=True)
 
@@ -488,3 +611,91 @@ def test_taint_rules_loaded():
         assert "sinks" in rule.pattern
         assert len(rule.pattern["sources"]) > 0
         assert len(rule.pattern["sinks"]) > 0
+
+
+# ---------------------------------------------------------------------------
+# 集成测试 - DetectorRunner 级别
+# ---------------------------------------------------------------------------
+
+def test_detector_runner_integration():
+    """测试 DetectorRunner 级别集成，确认 engines 包含 taint."""
+    code = '''
+from flask import Flask, request
+import os
+
+app = Flask(__name__)
+
+@app.route("/run")
+def run_command():
+    cmd = request.args.get("cmd")
+    os.system(cmd)
+    return "done"
+'''
+    file_path = _write_temp_file(code)
+    try:
+        runner = DetectorRunner()
+        findings = runner.scan_file(file_path)
+        
+        # 查找 Command Injection
+        cmd_findings = [f for f in findings if f.get("type") == "Command Injection"]
+        assert len(cmd_findings) > 0
+        
+        # 检查至少有一个 finding 的 engines 包含 taint
+        taint_findings = [f for f in cmd_findings if "taint" in f.get("engines", [])]
+        assert len(taint_findings) > 0, "没有找到 taint 引擎的 finding"
+        
+        # 检查 taint finding 的 metadata 包含 taint_trace
+        for finding in taint_findings:
+            metadata = finding.get("metadata", {})
+            assert "taint_trace" in metadata
+            assert len(metadata["taint_trace"]) > 0
+    finally:
+        Path(file_path).unlink(missing_ok=True)
+
+
+# ---------------------------------------------------------------------------
+# 集成测试 - analyze_input 级别
+# ---------------------------------------------------------------------------
+
+def test_analyze_input_integration():
+    """测试 analyze_input 级别集成，确认最终 JSON 包含 taint 引擎和 taint_trace."""
+    code = '''
+from flask import Flask, request
+import os
+
+app = Flask(__name__)
+
+@app.route("/run")
+def run_command():
+    cmd = request.args.get("cmd")
+    os.system(cmd)
+    return "done"
+'''
+    result = analyze_input(
+        input_type="code",
+        ai_mode="rule",
+        code=code,
+    )
+    
+    # 检查是否有漏洞
+    vulnerabilities = result.get("vulnerabilities", [])
+    cmd_vulns = [v for v in vulnerabilities if v.get("type") == "Command Injection"]
+    
+    # 应该检测到 Command Injection
+    assert len(cmd_vulns) > 0
+    
+    # 检查至少有一个 vulnerability 的 engines 包含 taint
+    taint_vulns = []
+    for vuln in cmd_vulns:
+        engines = vuln.get("engines", [])
+        engine_names = [e.get("en") if isinstance(e, dict) else e for e in engines]
+        if "taint" in engine_names or any("taint" in str(e) for e in engines):
+            taint_vulns.append(vuln)
+    
+    assert len(taint_vulns) > 0, "没有找到 taint 引擎的 vulnerability"
+    
+    # 检查 taint vulnerability 的 metadata 包含 taint_trace
+    for vuln in taint_vulns:
+        metadata = vuln.get("metadata", {})
+        assert "taint_trace" in metadata, f"metadata 中缺少 taint_trace: {metadata.keys()}"
+        assert len(metadata["taint_trace"]) > 0

@@ -68,6 +68,7 @@ class TaintFinding:
             "line": self.line,
             "severity": self.severity,
             "engine": self.engine,
+            "engines": [self.engine],  # 添加 engines 字段以兼容现有格式
             "confidence": self.confidence,
         }
 
@@ -139,6 +140,8 @@ class TaintRuleConfig:
     sinks: list[dict[str, Any]] = field(default_factory=list)
     # 净化器配置
     sanitizers: list[dict[str, Any]] = field(default_factory=list)
+    # 传播器配置（传播污点但不报漏洞）
+    propagators: list[dict[str, Any]] = field(default_factory=list)
 
     # 规则元信息
     rule_id: str = ""
@@ -157,6 +160,7 @@ class TaintRuleConfig:
             sources=raw.get("sources", []),
             sinks=raw.get("sinks", []),
             sanitizers=raw.get("sanitizers", []),
+            propagators=raw.get("propagators", []),
             rule_id=raw.get("id", ""),
             rule_name=raw.get("name", ""),
             severity=raw.get("severity", "ERROR"),
