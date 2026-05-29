@@ -172,12 +172,18 @@ rules:
         - name: os.path.abspath
           description: "os.path.abspath 路径规范化"
           arg_index: 0
+        - name: os.path.realpath
+          description: "os.path.realpath 路径规范化（传播污点，需配合边界检查）"
+          arg_index: 0
         - name: Path.joinpath
           description: "pathlib Path.joinpath 方法"
           arg_index: 0
         - name: Path.__truediv__
           description: "pathlib Path / 运算符"
           arg_index: 0
+        - name: Path.resolve
+          description: "pathlib Path.resolve 路径规范化（传播污点，需配合边界检查）"
+          arg_index: -1  # receiver
       sanitizers:
         # Flask 安全文件名
         - name: secure_filename
@@ -185,13 +191,6 @@ rules:
         # Flask safe_join
         - name: safe_join
           description: "werkzeug safe_join"
-        # 路径规范化检查
-        - name: os.path.realpath
-          condition: boundary_check
-          description: "路径规范化并检查边界"
-        - name: Path.resolve
-          condition: boundary_check
-          description: "pathlib 路径规范化并检查边界"
 
   # ========================================
   # Command Injection 规则

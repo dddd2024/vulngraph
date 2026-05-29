@@ -900,3 +900,162 @@ def run_command():
         metadata = vuln.get("metadata", {})
         assert "taint_trace" in metadata, f"metadata 中缺少 taint_trace: {metadata.keys()}"
         assert len(metadata["taint_trace"]) > 0
+
+
+# ---------------------------------------------------------------------------
+# Boundary Check Sanitizer 测试
+# ---------------------------------------------------------------------------
+
+def test_os_path_realpath_propagates_to_open_reports(taint_engine: TaintEngine, taint_rules: list):
+    """测试 os.path.realpath 传播污点到 open 时报 Path Traversal."""
+    code = '''
+from flask import Flask, request
+import os
+
+app = Flask(__name__)
+
+@app.route("/read")
+def read_file():
+    path = request.args.get("path")
+    real = os.path.realpath(path)
+    with open(real, "r") as f:
+        return f.read()
+'''
+    file_path = _write_temp_file(code)
+    try:
+        findings = taint_engine.scan_file(file_path, taint_rules)
+        
+        # os.path.realpath 是 propagator，污点传播到 open，应该报 Path Traversal
+        pt_findings = [f for f in findings if f.type == "Path Traversal"]
+        assert len(pt_findings) > 0
+        
+        # 检查 source 和 sink
+        finding = pt_findings[0]
+        assert finding.source == "request.args.get"
+        assert finding.sink == "open"
+    finally:
+        Path(file_path).unlink(missing_ok=True)
+
+
+def test_path_resolve_propagates_to_read_text_reports(taint_engine: TaintEngine, taint_rules: list):
+    """测试 Path.resolve 传播污点到 read_text 时报 Path Traversal."""
+    code = '''
+from flask import Flask, request
+from pathlib import Path
+
+app = Flask(__name__)
+
+@app.route("/read")
+def read_file():
+    path = request.args.get("path")
+    p = Path(path)
+    resolved = p.resolve()
+    return resolved.read_text()
+'''
+    file_path = _write_temp_file(code)
+    try:
+        findings = taint_engine.scan_file(file_path, taint_rules)
+        
+        # Path.resolve 是 propagator，污点传播到 read_text，应该报 Path Traversal
+        pt_findings = [f for f in findings if f.type == "Path Traversal"]
+        assert len(pt_findings) > 0
+        
+        # 检查 source 和 sink
+        finding = pt_findings[0]
+        assert finding.source == "request.args.get"
+        assert "read_text" in finding.sink
+    finally:
+        Path(file_path).unlink(missing_ok=True)
+
+
+# ---------------------------------------------------------------------------
+# Inline Sanitizer 测试
+# ---------------------------------------------------------------------------
+
+def test_inline_sanitizer_secure_filename_no_vuln(taint_engine: TaintEngine, taint_rules: list):
+    """测试 inline sanitizer: open(secure_filename(request.args.get("path"))) 不报 Path Traversal."""
+    code = '''
+from flask import Flask, request
+from werkzeug.utils import secure_filename
+
+app = Flask(__name__)
+
+@app.route("/read")
+def read_file():
+    with open(secure_filename(request.args.get("path")), "r") as f:
+        return f.read()
+'''
+    file_path = _write_temp_file(code)
+    try:
+        findings = taint_engine.scan_file(file_path, taint_rules)
+        
+        # secure_filename 是 sanitizer，包裹 inline source，不应报 Path Traversal
+        pt_findings = [f for f in findings if f.type == "Path Traversal"]
+        assert len(pt_findings) == 0
+    finally:
+        Path(file_path).unlink(missing_ok=True)
+
+
+def test_inline_sanitizer_shlex_quote_no_vuln(taint_engine: TaintEngine, taint_rules: list):
+    """测试 inline sanitizer: os.system("ls " + shlex.quote(user_input)) 不报 Command Injection."""
+    code = '''
+from flask import Flask, request
+import os
+import shlex
+
+app = Flask(__name__)
+
+@app.route("/run")
+def run_command():
+    name = request.args.get("name")
+    os.system("ls " + shlex.quote(name))
+    return "done"
+'''
+    file_path = _write_temp_file(code)
+    try:
+        findings = taint_engine.scan_file(file_path, taint_rules)
+        
+        # shlex.quote 是 sanitizer，包裹 inline source，不应报 Command Injection
+        cmd_findings = [f for f in findings if f.type == "Command Injection"]
+        assert len(cmd_findings) == 0
+    finally:
+        Path(file_path).unlink(missing_ok=True)
+
+
+# ---------------------------------------------------------------------------
+# Inline Source Trace 测试
+# ---------------------------------------------------------------------------
+
+def test_inline_source_trace_correct_source_name(taint_engine: TaintEngine, taint_rules: list):
+    """测试 Path(request.args.get("path")).read_text() 的 finding.source 正确显示 request.args.get."""
+    code = '''
+from flask import Flask, request
+from pathlib import Path
+
+app = Flask(__name__)
+
+@app.route("/read")
+def read_file():
+    return Path(request.args.get("path")).read_text()
+'''
+    file_path = _write_temp_file(code)
+    try:
+        findings = taint_engine.scan_file(file_path, taint_rules)
+        
+        # 应该检测到 Path Traversal
+        pt_findings = [f for f in findings if f.type == "Path Traversal"]
+        assert len(pt_findings) > 0
+        
+        # 检查 source 正确显示为 request.args.get
+        finding = pt_findings[0]
+        assert finding.source == "request.args.get"
+        
+        # 检查 sink 是 Path.read_text
+        assert "read_text" in finding.sink
+        
+        # 检查 metadata 中的 source 也正确
+        finding_dict = finding.to_dict()
+        metadata = finding_dict.get("metadata", {})
+        assert metadata.get("source") == "request.args.get"
+    finally:
+        Path(file_path).unlink(missing_ok=True)

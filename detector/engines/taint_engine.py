@@ -264,47 +264,134 @@ def _contains_tainted_variable_in_arg(
     return []
 
 
-def _contains_source_call_in_arg(
+def _is_arg_sanitized(
     node: ast.Call,
     arg_index: int,
-    source_patterns: list[dict[str, Any]]
-) -> bool:
-    """检查指定位置的参数是否直接包含 source call（inline source → sink）.
+    tainted_vars: dict[str, TaintVariable],
+    sanitizer_patterns: list[dict[str, Any]]
+) -> tuple[bool, str]:
+    """检查指定位置的参数是否被 sanitizer 包裹.
 
-    用于检测如 os.system(request.args.get("cmd")) 这种直接传递 source 到 sink 的情况。
+    用于检测如 os.system("ls " + shlex.quote(name)) 这种变量被 sanitizer 包裹的情况。
+    返回 (is_sanitized, sanitizer_name)。
     """
-    def _find_source_in_node(n: ast.AST) -> bool:
-        """递归查找节点中是否包含 source call."""
+    def _check_sanitizer_in_node(n: ast.AST) -> tuple[bool, str]:
+        """递归检查节点中是否有 sanitizer 包裹污点变量."""
         if isinstance(n, ast.Call):
-            if _match_source_pattern(n, source_patterns):
-                return True
+            # 检查是否是 sanitizer
+            sanitizer_pattern = _match_sanitizer_pattern(n, sanitizer_patterns)
+            if sanitizer_pattern:
+                sanitizer_name = sanitizer_pattern.get("name", "")
+                # 检查 sanitizer 的参数是否包含污点变量
+                found = _contains_tainted_variable(n, tainted_vars)
+                if found:
+                    return (True, sanitizer_name)
+                return (False, "")
+            
             # 递归检查参数
             for arg in n.args:
-                if _find_source_in_node(arg):
-                    return True
+                result = _check_sanitizer_in_node(arg)
+                if result[0]:
+                    return result
             for kw in n.keywords:
-                if _find_source_in_node(kw.value):
-                    return True
+                result = _check_sanitizer_in_node(kw.value)
+                if result[0]:
+                    return result
+        
         elif isinstance(n, ast.BinOp):
-            return _find_source_in_node(n.left) or _find_source_in_node(n.right)
-        elif isinstance(n, ast.JoinedStr):
-            for value in n.values:
-                if isinstance(value, ast.FormattedValue):
-                    if _find_source_in_node(value.value):
-                        return True
-        return False
+            # 检查字符串拼接
+            left_result = _check_sanitizer_in_node(n.left)
+            if left_result[0]:
+                return left_result
+            return _check_sanitizer_in_node(n.right)
+        
+        return (False, "")
     
     if arg_index == -1:
         # 检查接收者
         if isinstance(node.func, ast.Attribute):
             receiver = node.func.value
-            return _find_source_in_node(receiver)
-        return False
+            return _check_sanitizer_in_node(receiver)
+        return (False, "")
     
     if arg_index < len(node.args):
         target_arg = node.args[arg_index]
-        return _find_source_in_node(target_arg)
-    return False
+        return _check_sanitizer_in_node(target_arg)
+    return (False, "")
+
+
+def _find_source_call_in_arg(
+    node: ast.Call,
+    arg_index: int,
+    source_patterns: list[dict[str, Any]],
+    sanitizer_patterns: list[dict[str, Any]]
+) -> tuple[dict[str, Any] | None, bool, str]:
+    """查找指定位置的参数中的 source call，返回 (source_pattern, is_sanitized, sanitizer_name).
+
+    用于检测如 os.system(request.args.get("cmd")) 这种直接传递 source 到 sink 的情况。
+    同时检测 source call 是否被 sanitizer 包裹（如 secure_filename(request.args.get("path"))）。
+    """
+    result: tuple[dict[str, Any] | None, bool, str] = (None, False, "")
+    
+    def _find_source_and_sanitizer_in_node(n: ast.AST, in_sanitizer: bool = False, sanitizer_name: str = "") -> tuple[dict[str, Any] | None, bool, str]:
+        """递归查找节点中的 source call 和 sanitizer."""
+        if isinstance(n, ast.Call):
+            # 先检查是否是 sanitizer
+            sanitizer_pattern = _match_sanitizer_pattern(n, sanitizer_patterns)
+            if sanitizer_pattern and not in_sanitizer:
+                # 这是一个 sanitizer 调用，检查其参数中是否有 source
+                sanitizer_name = sanitizer_pattern.get("name", "")
+                for arg in n.args:
+                    inner_result = _find_source_and_sanitizer_in_node(arg, True, sanitizer_name)
+                    if inner_result[0]:
+                        return inner_result
+                for kw in n.keywords:
+                    inner_result = _find_source_and_sanitizer_in_node(kw.value, True, sanitizer_name)
+                    if inner_result[0]:
+                        return inner_result
+                return (None, False, "")
+            
+            # 检查是否是 source
+            source_pattern = _match_source_pattern(n, source_patterns)
+            if source_pattern:
+                return (source_pattern, in_sanitizer, sanitizer_name)
+            
+            # 递归检查参数
+            for arg in n.args:
+                inner_result = _find_source_and_sanitizer_in_node(arg, in_sanitizer, sanitizer_name)
+                if inner_result[0]:
+                    return inner_result
+            for kw in n.keywords:
+                inner_result = _find_source_and_sanitizer_in_node(kw.value, in_sanitizer, sanitizer_name)
+                if inner_result[0]:
+                    return inner_result
+        
+        elif isinstance(n, ast.BinOp):
+            left_result = _find_source_and_sanitizer_in_node(n.left, in_sanitizer, sanitizer_name)
+            if left_result[0]:
+                return left_result
+            return _find_source_and_sanitizer_in_node(n.right, in_sanitizer, sanitizer_name)
+        
+        elif isinstance(n, ast.JoinedStr):
+            for value in n.values:
+                if isinstance(value, ast.FormattedValue):
+                    inner_result = _find_source_and_sanitizer_in_node(value.value, in_sanitizer, sanitizer_name)
+                    if inner_result[0]:
+                        return inner_result
+        
+        return (None, False, "")
+    
+    if arg_index == -1:
+        # 检查接收者
+        if isinstance(node.func, ast.Attribute):
+            receiver = node.func.value
+            return _find_source_and_sanitizer_in_node(receiver)
+        return (None, False, "")
+    
+    if arg_index < len(node.args):
+        target_arg = node.args[arg_index]
+        return _find_source_and_sanitizer_in_node(target_arg)
+    return (None, False, "")
 
 
 def _propagate_taint_through_binop(
@@ -537,8 +624,9 @@ class FunctionTaintAnalyzer(ast.NodeVisitor):
             for target in node.targets:
                 target_names = self._extract_target_names(target)
                 for name in target_names:
-                    # 合并所有源污点的信息
-                    combined_source = ", ".join(t.source for t in new_taints if t.source)
+                    # 合并所有源污点的信息（去重）
+                    unique_sources = list(set(t.source for t in new_taints if t.source))
+                    combined_source = ", ".join(unique_sources)
                     combined_source_line = min(t.source_line for t in new_taints if t.source_line) or _get_node_line(node)
                     combined_steps: list[TaintTraceStep] = []
                     for t in new_taints:
@@ -580,49 +668,17 @@ class FunctionTaintAnalyzer(ast.NodeVisitor):
             found = _contains_tainted_variable_in_arg(node, arg_index, self._tainted_vars)
             
             # 检查是否是 inline source → sink（如 os.system(request.args.get("cmd"))）
-            is_inline_source = False
-            inline_source_name = ""
-            if not found:
-                if _contains_source_call_in_arg(node, arg_index, self._source_patterns):
-                    is_inline_source = True
-                    # 获取 source 名称用于报告
-                    if arg_index == -1:
-                        # 检查 receiver
-                        if isinstance(node.func, ast.Attribute):
-                            receiver = node.func.value
-                            if isinstance(receiver, ast.Call):
-                                source_pattern = _match_source_pattern(receiver, self._source_patterns)
-                                if source_pattern:
-                                    inline_source_name = source_pattern.get("name", "")
-                    elif arg_index < len(node.args):
-                        target_arg = node.args[arg_index]
-                        if isinstance(target_arg, ast.Call):
-                            source_pattern = _match_source_pattern(target_arg, self._source_patterns)
-                            if source_pattern:
-                                inline_source_name = source_pattern.get("name", "")
-                        elif isinstance(target_arg, ast.JoinedStr):
-                            # 从 f-string 中提取 source 名称
-                            for value in target_arg.values:
-                                if isinstance(value, ast.FormattedValue):
-                                    if isinstance(value.value, ast.Call):
-                                        source_pattern = _match_source_pattern(value.value, self._source_patterns)
-                                        if source_pattern:
-                                            inline_source_name = source_pattern.get("name", "")
-                                            break
-                        elif isinstance(target_arg, ast.BinOp):
-                            # 从字符串拼接中提取 source 名称
-                            def extract_source_from_binop(n: ast.AST) -> str:
-                                if isinstance(n, ast.Call):
-                                    source_pattern = _match_source_pattern(n, self._source_patterns)
-                                    if source_pattern:
-                                        return source_pattern.get("name", "")
-                                if isinstance(n, ast.BinOp):
-                                    left = extract_source_from_binop(n.left)
-                                    if left:
-                                        return left
-                                    return extract_source_from_binop(n.right)
-                                return ""
-                            inline_source_name = extract_source_from_binop(target_arg)
+            # 使用新的 _find_source_call_in_arg 函数
+            inline_source_pattern, inline_sanitized, inline_sanitizer_name = _find_source_call_in_arg(
+                node, arg_index, self._source_patterns, self._sanitizer_patterns
+            )
+            is_inline_source = inline_source_pattern is not None
+            inline_source_name = inline_source_pattern.get("name", "") if inline_source_pattern else ""
+            
+            # 如果 inline source 被 sanitizer 包裹，则不报漏洞或降低置信度
+            if is_inline_source and inline_sanitized:
+                # inline source 已被净化，不报漏洞
+                is_inline_source = False
 
             # 检查是否是 SQL 参数化查询（特殊处理：只抑制当前调用）
             call_name = qualified_name(node)
@@ -654,6 +710,15 @@ class FunctionTaintAnalyzer(ast.NodeVisitor):
                     sanitized = True
                     sanitizer_name = taint_var.sanitizer
                     break
+            
+            # 检查参数是否被 sanitizer 包裹（如 shlex.quote(name)）
+            if found and not sanitized:
+                arg_sanitized, arg_sanitizer_name = _is_arg_sanitized(
+                    node, arg_index, self._tainted_vars, self._sanitizer_patterns
+                )
+                if arg_sanitized:
+                    sanitized = True
+                    sanitizer_name = arg_sanitizer_name
 
             if (found and not sanitized) or is_inline_source:
                 # 发现漏洞！
