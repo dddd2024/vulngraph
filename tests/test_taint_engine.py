@@ -10,7 +10,7 @@
 7. subprocess.run(cmd, shell=True) 报 Command Injection
 8. os.path.join 单独出现不报 Path Traversal
 9. template.execute(user_input) 不应报 SQL Injection
-10. 参数化 SQL 后 name 再进入危险 f-string SQL 仍应报 SQL Injection
+10. 参数化 SQL 使用 name 后，name 再进入危险 f-string SQL 时仍应报 SQL Injection
 """
 
 from __future__ import annotations
@@ -220,6 +220,97 @@ def run():
 
 
 # ---------------------------------------------------------------------------
+# Inline Source → Sink 测试
+# ---------------------------------------------------------------------------
+
+def test_inline_source_to_os_system_reports(taint_engine: TaintEngine, taint_rules: list):
+    """测试 inline source → sink: os.system(request.args.get("cmd")) 报 Command Injection."""
+    code = '''
+from flask import Flask, request
+import os
+
+app = Flask(__name__)
+
+@app.route("/run")
+def run_command():
+    os.system(request.args.get("cmd"))
+    return "done"
+'''
+    file_path = _write_temp_file(code)
+    try:
+        findings = taint_engine.scan_file(file_path, taint_rules)
+        
+        # 应该检测到 Command Injection
+        cmd_findings = [f for f in findings if f.type == "Command Injection"]
+        assert len(cmd_findings) > 0
+        
+        # 检查 source 和 sink
+        finding = cmd_findings[0]
+        assert finding.source == "request.args.get"
+        assert finding.sink == "os.system"
+    finally:
+        Path(file_path).unlink(missing_ok=True)
+
+
+def test_inline_source_to_open_reports(taint_engine: TaintEngine, taint_rules: list):
+    """测试 inline source → sink: open(request.args.get("path")) 报 Path Traversal."""
+    code = '''
+from flask import Flask, request
+
+app = Flask(__name__)
+
+@app.route("/read")
+def read_file():
+    return open(request.args.get("path")).read()
+'''
+    file_path = _write_temp_file(code)
+    try:
+        findings = taint_engine.scan_file(file_path, taint_rules)
+        
+        # 应该检测到 Path Traversal
+        pt_findings = [f for f in findings if f.type == "Path Traversal"]
+        assert len(pt_findings) > 0
+        
+        # 检查 source 和 sink
+        finding = pt_findings[0]
+        assert finding.source == "request.args.get"
+        assert finding.sink == "open"
+    finally:
+        Path(file_path).unlink(missing_ok=True)
+
+
+def test_inline_source_to_cursor_execute_reports(taint_engine: TaintEngine, taint_rules: list):
+    """测试 inline source → sink: cursor.execute(f"...{request.args.get('name')}...") 报 SQL Injection."""
+    code = '''
+from flask import Flask, request
+import sqlite3
+
+app = Flask(__name__)
+
+@app.route("/search")
+def search():
+    conn = sqlite3.connect("test.db")
+    cursor = conn.cursor()
+    cursor.execute(f"SELECT * FROM users WHERE name='{request.args.get('name')}'")
+    return cursor.fetchall()
+'''
+    file_path = _write_temp_file(code)
+    try:
+        findings = taint_engine.scan_file(file_path, taint_rules)
+        
+        # 应该检测到 SQL Injection
+        sql_findings = [f for f in findings if f.type == "SQL Injection"]
+        assert len(sql_findings) > 0
+        
+        # 检查 source 和 sink
+        finding = sql_findings[0]
+        assert finding.source == "request.args.get"
+        assert finding.sink == "cursor.execute"
+    finally:
+        Path(file_path).unlink(missing_ok=True)
+
+
+# ---------------------------------------------------------------------------
 # Path Traversal 测试
 # ---------------------------------------------------------------------------
 
@@ -287,7 +378,7 @@ def read_file():
 
 
 def test_path_traversal_pathlib(taint_engine: TaintEngine, taint_rules: list):
-    """测试 pathlib Path.open 路径穿越."""
+    """测试 pathlib Path.read_text 路径穿越."""
     code = '''
 from flask import Flask, request
 from pathlib import Path
@@ -307,6 +398,63 @@ def read_file():
         # 应该检测到 Path Traversal
         pt_findings = [f for f in findings if f.type == "Path Traversal"]
         assert len(pt_findings) > 0
+    finally:
+        Path(file_path).unlink(missing_ok=True)
+
+
+def test_path_open_receiver_reports(taint_engine: TaintEngine, taint_rules: list):
+    """测试 Path.open() receiver 检查：p.open() 当 p 被污染时报 Path Traversal."""
+    code = '''
+from flask import Flask, request
+from pathlib import Path
+
+app = Flask(__name__)
+
+@app.route("/read")
+def read_file():
+    path = request.args.get("path")
+    p = Path(path)
+    with p.open() as f:
+        return f.read()
+'''
+    file_path = _write_temp_file(code)
+    try:
+        findings = taint_engine.scan_file(file_path, taint_rules)
+        
+        # 应该检测到 Path Traversal
+        pt_findings = [f for f in findings if f.type == "Path Traversal"]
+        assert len(pt_findings) > 0
+        
+        # 检查 sink 是 Path.open
+        finding = pt_findings[0]
+        assert "open" in finding.sink
+    finally:
+        Path(file_path).unlink(missing_ok=True)
+
+
+def test_path_read_text_direct_constructor_reports(taint_engine: TaintEngine, taint_rules: list):
+    """测试 Path 直接构造函数 receiver 检查：Path(path).read_text() 报 Path Traversal."""
+    code = '''
+from flask import Flask, request
+from pathlib import Path
+
+app = Flask(__name__)
+
+@app.route("/read")
+def read_file():
+    return Path(request.args.get("path")).read_text()
+'''
+    file_path = _write_temp_file(code)
+    try:
+        findings = taint_engine.scan_file(file_path, taint_rules)
+        
+        # 应该检测到 Path Traversal
+        pt_findings = [f for f in findings if f.type == "Path Traversal"]
+        assert len(pt_findings) > 0
+        
+        # 检查 sink 是 Path.read_text
+        finding = pt_findings[0]
+        assert "read_text" in finding.sink
     finally:
         Path(file_path).unlink(missing_ok=True)
 
@@ -358,6 +506,34 @@ def read_file():
         findings = taint_engine.scan_file(file_path, taint_rules)
         
         # os.path.join 结果流入 open，应该报 Path Traversal
+        pt_findings = [f for f in findings if f.type == "Path Traversal"]
+        assert len(pt_findings) > 0
+    finally:
+        Path(file_path).unlink(missing_ok=True)
+
+
+def test_os_path_join_user_input_at_third_arg_propagates(taint_engine: TaintEngine, taint_rules: list):
+    """测试 os.path.join 第三个参数被污染时也能传播到 sink."""
+    code = '''
+from flask import Flask, request
+import os
+
+app = Flask(__name__)
+
+@app.route("/read")
+def read_file():
+    base = "/safe/base"
+    middle = "middle"
+    user_input = request.args.get("path")
+    full_path = os.path.join(base, middle, user_input)  # 第三个参数被污染
+    with open(full_path, "r") as f:
+        return f.read()
+'''
+    file_path = _write_temp_file(code)
+    try:
+        findings = taint_engine.scan_file(file_path, taint_rules)
+        
+        # 第三个参数被污染，join 结果流入 open，应该报 Path Traversal
         pt_findings = [f for f in findings if f.type == "Path Traversal"]
         assert len(pt_findings) > 0
     finally:
@@ -423,6 +599,31 @@ def run_command():
         findings = taint_engine.scan_file(file_path, taint_rules)
         
         # shell=False 且使用列表参数，不应该报 Command Injection
+        cmd_findings = [f for f in findings if f.type == "Command Injection"]
+        assert len(cmd_findings) == 0
+    finally:
+        Path(file_path).unlink(missing_ok=True)
+
+
+def test_subprocess_list_without_shell_keyword_safe(taint_engine: TaintEngine, taint_rules: list):
+    """测试 subprocess.run(["cmd", user_input]) 没有 shell 关键字时不报 Command Injection."""
+    code = '''
+from flask import Flask, request
+import subprocess
+
+app = Flask(__name__)
+
+@app.route("/run")
+def run_command():
+    user_input = request.args.get("input")
+    result = subprocess.run(["echo", user_input], capture_output=True)
+    return result.stdout.decode()
+'''
+    file_path = _write_temp_file(code)
+    try:
+        findings = taint_engine.scan_file(file_path, taint_rules)
+        
+        # 没有 shell 关键字（默认 False）且使用列表参数，不应该报 Command Injection
         cmd_findings = [f for f in findings if f.type == "Command Injection"]
         assert len(cmd_findings) == 0
     finally:

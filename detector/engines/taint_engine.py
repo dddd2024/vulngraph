@@ -15,7 +15,7 @@ import ast
 from pathlib import Path
 from typing import Any
 
-from detector.core.ast_utils import qualified_name, keyword_is_false, keyword_is_true
+from detector.core.ast_utils import qualified_name, keyword_is_false, keyword_is_true, keyword_value
 from detector.core.models import Rule
 from detector.core.taint_models import (
     TaintFinding,
@@ -64,27 +64,58 @@ def _match_sink_pattern(node: ast.Call, sink_patterns: list[dict[str, Any]]) -> 
     """检查节点是否匹配污点汇模式.
 
     支持精确匹配、后缀匹配，以及处理链式调用和变量名模式。
+    优先匹配更具体的模式（带通配符的 > 简单后缀匹配）。
     """
     call_name = qualified_name(node)
+    best_match = None
+    best_specificity = 0  # 特异性分数，越高越优先
+    
     for pattern in sink_patterns:
         pattern_name = pattern.get("name", "")
-        # 精确匹配或后缀匹配
-        if call_name == pattern_name or call_name.endswith("." + pattern_name):
-            return pattern
+        is_wildcard = pattern_name.startswith("*.")
+        
+        # 通配符模式：*.method 匹配 var.method
+        if is_wildcard:
+            suffix = pattern_name[2:]  # 去掉 *. 前缀
+            if call_name.endswith("." + suffix):
+                # 通配符模式特异性 = 方法名长度 + 10（优先）
+                specificity = len(suffix) + 10
+                if specificity > best_specificity:
+                    best_specificity = specificity
+                    best_match = pattern
+            continue
+        
+        # 精确匹配
+        if call_name == pattern_name:
+            specificity = len(pattern_name) + 5
+            if specificity > best_specificity:
+                best_specificity = specificity
+                best_match = pattern
+            continue
+        
+        # 后缀匹配：完整路径匹配
+        if call_name.endswith("." + pattern_name):
+            # 检查后缀前面是否有更多内容（更具体）
+            prefix = call_name[:-len(pattern_name) - 1]
+            specificity = len(pattern_name)
+            if prefix:  # 有前缀，更具体
+                specificity += len(prefix) * 0.5
+            if specificity > best_specificity:
+                best_specificity = specificity
+                best_match = pattern
+            continue
+        
         # 处理链式调用：Path(path).read_text 匹配 Path.read_text
-        # 将 call_name 中的 (...) 部分去掉再匹配
         if "(" in call_name:
-            # 简化处理：检查是否包含 pattern_name 作为后缀
-            # 例如 Path(path).read_text 包含 Path.read_text 模式
             simple_name = call_name.replace("(", "").replace(")", "").replace(" ", "")
             if simple_name == pattern_name or simple_name.endswith("." + pattern_name):
-                return pattern
-        # 支持通配符前缀：*.read_text 匹配 p.read_text、path.read_text 等
-        if pattern_name.startswith("*."):
-            suffix = pattern_name[2:]  # 去掉 *. 前缀
-            if call_name.endswith("." + suffix) or call_name == suffix:
-                return pattern
-    return None
+                specificity = len(pattern_name)
+                if specificity > best_specificity:
+                    best_specificity = specificity
+                    best_match = pattern
+                continue
+    
+    return best_match
 
 
 def _match_propagator_pattern(node: ast.Call, propagator_patterns: list[dict[str, Any]]) -> dict[str, Any] | None:
@@ -108,14 +139,24 @@ def _match_sanitizer_pattern(node: ast.Call, sanitizer_patterns: list[dict[str, 
 
 
 def _is_subprocess_safe(node: ast.Call) -> bool:
-    """检查 subprocess 调用是否安全（shell=False 且使用列表参数）."""
+    """检查 subprocess 调用是否安全（shell=False 或默认且使用列表参数）.
+    
+    安全的 subprocess 调用：
+    - shell=False 且使用列表参数
+    - 没有 shell 参数（默认 False）且使用列表参数
+    """
     call_name = qualified_name(node)
     if not call_name.startswith("subprocess."):
         return False
 
-    # 检查 shell=False
-    if not keyword_is_false(node, "shell"):
-        return False
+    # 检查 shell 参数
+    shell_value = keyword_value(node, "shell")
+    if shell_value is not None:
+        # 显式设置了 shell 参数
+        if not (isinstance(shell_value, ast.Constant) and shell_value.value is False):
+            # shell=True 或其他值，不安全
+            return False
+    # 如果没有 shell 参数，默认为 False，继续检查
 
     # 检查第一个参数是否为列表
     if node.args:
@@ -123,6 +164,18 @@ def _is_subprocess_safe(node: ast.Call) -> bool:
         if isinstance(first_arg, (ast.List, ast.Tuple)):
             return True
 
+    return False
+
+
+def _is_subprocess_shell_true(node: ast.Call) -> bool:
+    """检查 subprocess 调用是否显式设置了 shell=True."""
+    call_name = qualified_name(node)
+    if not call_name.startswith("subprocess."):
+        return False
+    
+    shell_value = keyword_value(node, "shell")
+    if shell_value is not None:
+        return isinstance(shell_value, ast.Constant) and shell_value.value is True
     return False
 
 
@@ -209,6 +262,49 @@ def _contains_tainted_variable_in_arg(
         target_arg = node.args[arg_index]
         return _contains_tainted_variable(target_arg, tainted_vars)
     return []
+
+
+def _contains_source_call_in_arg(
+    node: ast.Call,
+    arg_index: int,
+    source_patterns: list[dict[str, Any]]
+) -> bool:
+    """检查指定位置的参数是否直接包含 source call（inline source → sink）.
+
+    用于检测如 os.system(request.args.get("cmd")) 这种直接传递 source 到 sink 的情况。
+    """
+    def _find_source_in_node(n: ast.AST) -> bool:
+        """递归查找节点中是否包含 source call."""
+        if isinstance(n, ast.Call):
+            if _match_source_pattern(n, source_patterns):
+                return True
+            # 递归检查参数
+            for arg in n.args:
+                if _find_source_in_node(arg):
+                    return True
+            for kw in n.keywords:
+                if _find_source_in_node(kw.value):
+                    return True
+        elif isinstance(n, ast.BinOp):
+            return _find_source_in_node(n.left) or _find_source_in_node(n.right)
+        elif isinstance(n, ast.JoinedStr):
+            for value in n.values:
+                if isinstance(value, ast.FormattedValue):
+                    if _find_source_in_node(value.value):
+                        return True
+        return False
+    
+    if arg_index == -1:
+        # 检查接收者
+        if isinstance(node.func, ast.Attribute):
+            receiver = node.func.value
+            return _find_source_in_node(receiver)
+        return False
+    
+    if arg_index < len(node.args):
+        target_arg = node.args[arg_index]
+        return _find_source_in_node(target_arg)
+    return False
 
 
 def _propagate_taint_through_binop(
@@ -385,8 +481,22 @@ class FunctionTaintAnalyzer(ast.NodeVisitor):
                     propagator_pattern = _match_propagator_pattern(value, self._propagator_patterns)
                     if propagator_pattern:
                         # 传播器：传播污点但不报漏洞
-                        arg_index = propagator_pattern.get("arg_index", 0)
-                        found = _contains_tainted_variable_in_arg(value, arg_index, self._tainted_vars)
+                        # 支持 arg_indices: all 或 arg_indices: [0, 1, 2]
+                        arg_indices = propagator_pattern.get("arg_indices")
+                        if arg_indices == "all":
+                            # 检查所有参数
+                            found = []
+                            for i in range(len(value.args)):
+                                found.extend(_contains_tainted_variable_in_arg(value, i, self._tainted_vars))
+                        elif isinstance(arg_indices, list):
+                            # 检查指定索引列表
+                            found = []
+                            for idx in arg_indices:
+                                found.extend(_contains_tainted_variable_in_arg(value, idx, self._tainted_vars))
+                        else:
+                            # 使用单个 arg_index（向后兼容）
+                            arg_index = propagator_pattern.get("arg_index", 0)
+                            found = _contains_tainted_variable_in_arg(value, arg_index, self._tainted_vars)
                         if found:
                             new_taints = found
                     else:
@@ -468,6 +578,51 @@ class FunctionTaintAnalyzer(ast.NodeVisitor):
             
             # 只检查指定位置的参数
             found = _contains_tainted_variable_in_arg(node, arg_index, self._tainted_vars)
+            
+            # 检查是否是 inline source → sink（如 os.system(request.args.get("cmd"))）
+            is_inline_source = False
+            inline_source_name = ""
+            if not found:
+                if _contains_source_call_in_arg(node, arg_index, self._source_patterns):
+                    is_inline_source = True
+                    # 获取 source 名称用于报告
+                    if arg_index == -1:
+                        # 检查 receiver
+                        if isinstance(node.func, ast.Attribute):
+                            receiver = node.func.value
+                            if isinstance(receiver, ast.Call):
+                                source_pattern = _match_source_pattern(receiver, self._source_patterns)
+                                if source_pattern:
+                                    inline_source_name = source_pattern.get("name", "")
+                    elif arg_index < len(node.args):
+                        target_arg = node.args[arg_index]
+                        if isinstance(target_arg, ast.Call):
+                            source_pattern = _match_source_pattern(target_arg, self._source_patterns)
+                            if source_pattern:
+                                inline_source_name = source_pattern.get("name", "")
+                        elif isinstance(target_arg, ast.JoinedStr):
+                            # 从 f-string 中提取 source 名称
+                            for value in target_arg.values:
+                                if isinstance(value, ast.FormattedValue):
+                                    if isinstance(value.value, ast.Call):
+                                        source_pattern = _match_source_pattern(value.value, self._source_patterns)
+                                        if source_pattern:
+                                            inline_source_name = source_pattern.get("name", "")
+                                            break
+                        elif isinstance(target_arg, ast.BinOp):
+                            # 从字符串拼接中提取 source 名称
+                            def extract_source_from_binop(n: ast.AST) -> str:
+                                if isinstance(n, ast.Call):
+                                    source_pattern = _match_source_pattern(n, self._source_patterns)
+                                    if source_pattern:
+                                        return source_pattern.get("name", "")
+                                if isinstance(n, ast.BinOp):
+                                    left = extract_source_from_binop(n.left)
+                                    if left:
+                                        return left
+                                    return extract_source_from_binop(n.right)
+                                return ""
+                            inline_source_name = extract_source_from_binop(target_arg)
 
             # 检查是否是 SQL 参数化查询（特殊处理：只抑制当前调用）
             call_name = qualified_name(node)
@@ -476,12 +631,20 @@ class FunctionTaintAnalyzer(ast.NodeVisitor):
             if is_sql_execute and len(node.args) >= 2:
                 # 参数化查询：第二个参数存在，当前调用安全
                 found = []
+                is_inline_source = False
             
             # 检查是否是安全的 subprocess 调用（shell=False 且列表参数）
             is_subprocess = call_name.startswith("subprocess.")
-            if is_subprocess and _is_subprocess_safe(node):
-                # 安全的 subprocess 调用，不报漏洞
-                found = []
+            if is_subprocess:
+                if _is_subprocess_safe(node):
+                    # 安全的 subprocess 调用（shell=False 或默认 + 列表参数），不报漏洞
+                    found = []
+                    is_inline_source = False
+                elif not _is_subprocess_shell_true(node):
+                    # 没有显式 shell=True，但也不是安全调用（如字符串参数），不报漏洞
+                    # 只有 shell=True 且参数 tainted 时才报
+                    found = []
+                    is_inline_source = False
             
             # 检查是否经过净化
             sanitized = False
@@ -492,7 +655,7 @@ class FunctionTaintAnalyzer(ast.NodeVisitor):
                     sanitizer_name = taint_var.sanitizer
                     break
 
-            if found and not sanitized:
+            if (found and not sanitized) or is_inline_source:
                 # 发现漏洞！
                 vulnerability_type = sink_pattern.get("vulnerability", self.rule_config.rule_name)
                 sink_name = sink_pattern.get("name", "")
@@ -500,8 +663,21 @@ class FunctionTaintAnalyzer(ast.NodeVisitor):
 
                 # 构建污点追踪路径
                 trace_steps: list[TaintTraceStep] = []
-                for taint_var in found:
-                    trace_steps.extend(taint_var.trace_steps)
+                if found:
+                    for taint_var in found:
+                        trace_steps.extend(taint_var.trace_steps)
+                elif is_inline_source:
+                    # 创建 inline source 的 trace step
+                    source_step = TaintTraceStep(
+                        file=self.file_path,
+                        line=_get_node_line(node),
+                        col=_get_node_col(node),
+                        node_type="source",
+                        code_snippet=_get_code_snippet(self.source_code, _get_node_line(node)),
+                        variable=inline_source_name,
+                        description=f"Inline 污点源: {inline_source_name}",
+                    )
+                    trace_steps.append(source_step)
 
                 # 添加污点汇步骤
                 sink_step = TaintTraceStep(
@@ -526,9 +702,9 @@ class FunctionTaintAnalyzer(ast.NodeVisitor):
                     rule_id=self.rule_config.rule_id,
                     cwe=self.rule_config.cwe,
                     message=self.rule_config.message,
-                    source=found[0].source if found else "",
+                    source=found[0].source if found else inline_source_name,
                     sink=sink_name,
-                    source_line=found[0].source_line if found else 0,
+                    source_line=found[0].source_line if found else _get_node_line(node),
                     sink_line=_get_node_line(node),
                     taint_trace=trace_steps,
                     sanitized=sanitized,

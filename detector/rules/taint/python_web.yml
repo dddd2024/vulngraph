@@ -131,15 +131,15 @@ rules:
         - name: Path.open
           description: "pathlib Path.open 方法"
           vulnerability: "Path Traversal"
-          arg_index: 0
+          arg_index: -1  # -1 表示接收者（self）
         - name: "*.open"
           description: "pathlib Path.open 方法（任意变量名）"
           vulnerability: "Path Traversal"
-          arg_index: 0
+          arg_index: -1  # -1 表示接收者（self）
         - name: Path.read_text
           description: "pathlib Path.read_text 方法"
           vulnerability: "Path Traversal"
-          arg_index: 0
+          arg_index: -1  # -1 表示接收者（self）
         - name: "*.read_text"
           description: "pathlib Path.read_text 方法（任意变量名）"
           vulnerability: "Path Traversal"
@@ -168,7 +168,7 @@ rules:
         # 路径传播器（本身不报漏洞，但会传播污点）
         - name: os.path.join
           description: "os.path.join 路径拼接"
-          arg_index: 1  # 第二个参数是用户输入
+          arg_indices: all  # 任意参数 tainted 时，返回值应 tainted
         - name: os.path.abspath
           description: "os.path.abspath 路径规范化"
           arg_index: 0
