@@ -70,6 +70,7 @@ ENGINE_ZH = {
     "tree-sitter": "Tree-sitter 分析",
     "ml": "深度学习检测",
     "ml-fallback": "ML 模式检测",
+    "taint": "污点流分析",
 }
 
 PATCH_MODE_ZH = {
@@ -661,6 +662,9 @@ def _build_finding_output(
         "api_called": api_called,
         "model_used": model_used,
     }
+    # 保留 metadata 字段（包含污点追踪信息）
+    if "metadata" in vuln:
+        finding_output["metadata"] = vuln["metadata"]
     finding_output["bilingual"] = _build_bilingual_finding(finding_output)
     return finding_output
 

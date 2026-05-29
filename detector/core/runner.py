@@ -3,6 +3,7 @@
 第一阶段：包装现有 detect_xxx 函数（scan_file_with_builtin_detectors）.
 第六阶段新增：DetectorRunner 类，同时执行 AST YAML 规则 + Python plugins.
 第七阶段新增：RegexRuleEngine 集成.
+第八阶段新增：TaintEngine 污点流分析集成.
 """
 
 from __future__ import annotations
@@ -13,6 +14,7 @@ from detector.core.rule_loader import load_yaml_rules
 from detector.engines.ast_rule_engine import AstRuleEngine
 from detector.engines.plugin_engine import PluginEngine
 from detector.engines.regex_rule_engine import RegexRuleEngine
+from detector.engines.taint_engine import TaintEngine
 from detector.vuln_detector import (
     detect_command_injection,
     detect_dangerous_code_execution,
@@ -74,7 +76,7 @@ def scan_file_with_builtin_detectors(file_path: str) -> list[dict[str, Any]]:
 # DetectorRunner – 统一引擎调度器
 # ---------------------------------------------------------------------------
 class DetectorRunner:
-    """统一检测入口：同时执行 AST YAML 规则 + Python Plugin + Regex 引擎.
+    """统一检测入口：同时执行 AST YAML 规则 + Python Plugin + Regex 引擎 + Taint 引擎.
 
     用法::
 
@@ -87,15 +89,18 @@ class DetectorRunner:
         ast_engine: AstRuleEngine | None = None,
         plugin_engine: PluginEngine | None = None,
         regex_engine: RegexRuleEngine | None = None,
+        taint_engine: TaintEngine | None = None,
         rules_dir: str | None = None,
     ) -> None:
         self._ast_engine = ast_engine or AstRuleEngine()
         self._plugin_engine = plugin_engine or PluginEngine()
         self._regex_engine = regex_engine or RegexRuleEngine()
+        self._taint_engine = taint_engine or TaintEngine()
         self._rules_dir = rules_dir
         # 延迟加载规则
         self._ast_rules: list[Any] | None = None
         self._regex_rules: list[Any] | None = None
+        self._taint_rules: list[Any] | None = None
 
     def _get_ast_rules(self) -> list[Any]:
         if self._ast_rules is None:
@@ -110,6 +115,14 @@ class DetectorRunner:
                 r for r in load_yaml_rules(self._rules_dir) if r.engine == "regex"
             ]
         return self._regex_rules
+
+    def _get_taint_rules(self) -> list[Any]:
+        """获取污点分析规则."""
+        if self._taint_rules is None:
+            self._taint_rules = [
+                r for r in load_yaml_rules(self._rules_dir) if r.engine == "taint"
+            ]
+        return self._taint_rules
 
     def scan_file(self, file_path: str) -> list[dict[str, Any]]:
         """对单个文件运行所有引擎，返回合并的 finding 列表（dict 格式）.
@@ -154,6 +167,12 @@ class DetectorRunner:
         regex_rules = self._get_regex_rules()
         if regex_rules:
             _safe_run(lambda r=regex_rules: [f.to_dict() for f in self._regex_engine.scan_file(file_path, r)])
+
+        # 4. Taint 污点流分析引擎（仅处理 Python 文件）
+        if file_path.endswith(".py"):
+            taint_rules = self._get_taint_rules()
+            if taint_rules:
+                _safe_run(lambda r=taint_rules: [f.to_dict() for f in self._taint_engine.scan_file(file_path, r)])
 
         if not all_findings and first_error is not None:
             raise first_error
