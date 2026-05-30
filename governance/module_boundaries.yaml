@@ -255,8 +255,12 @@ modules:
     
     public_contracts:
       - api/schemas.py
+      - api/server.py
       - api/routes/scan.py
-      - api/routes/health.py
+      - api/routes/findings.py
+      - api/routes/evidence.py
+      - api/routes/agents.py
+      - api/routes/report.py
       - api/routes/legacy.py
     
     dependencies:

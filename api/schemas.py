@@ -4,13 +4,15 @@ API request/response schemas.
 Defines Pydantic models for API requests and responses.
 """
 
-from pydantic import BaseModel
-from typing import Optional
+from pydantic import BaseModel, Field
+from typing import Literal, Optional
 
 
 class ScanRequest(BaseModel):
     """Request model for /scan endpoint."""
-    input_type: str  # 'code', 'path', 'github'
+    input_type: Literal["code", "path", "github"] = Field(
+        ..., description="Type of input: 'code', 'path', or 'github'"
+    )
     code: Optional[str] = None
     repo_path: Optional[str] = None
     repo_url: Optional[str] = None

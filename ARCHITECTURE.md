@@ -146,8 +146,11 @@ FastAPI routes and schemas.
 
 - **schemas.py**: Pydantic request/response models
 - **routes/scan.py**: New scan endpoint
-- **routes/health.py**: Health check
 - **routes/legacy.py**: Backward compatibility
+- **routes/findings.py**: Findings endpoint
+- **routes/evidence.py**: Evidence endpoint
+- **routes/agents.py**: Agent logs endpoint
+- **routes/report.py**: Report generation endpoints
 
 ## Key Design Principles
 
@@ -188,6 +191,8 @@ result = orchestrator.scan(
 - `GET /evidence` - Evidence bundles from most recent scan
 - `GET /agents/logs` - Agent logs from most recent scan
 - `GET /report/json` - Full audit result as JSON
+- `GET /report/markdown` - Audit report as Markdown
+- `GET /report/html` - Audit report as HTML
 - `GET /health` - Health check
 
 **Legacy (backward compatible):**

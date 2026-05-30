@@ -93,7 +93,8 @@ class TestScanEndpoint:
             "input_type": "invalid",
             "code": "x",
         })
-        assert resp.status_code == 400
+        # Pydantic validation returns 422 for invalid enum values
+        assert resp.status_code == 422
 
     def test_scan_missing_code(self):
         resp = client.post("/scan", json={
@@ -153,6 +154,32 @@ class TestSubResourceEndpoints:
         assert "findings" in data
         assert "evidence" in data
         assert "agent_logs" in data
+
+    def test_report_markdown_returns_text(self):
+        client.post("/scan", json={
+            "input_type": "code",
+            "code": SQL_INJECTION_CODE,
+            "language": "python",
+        })
+        resp = client.get("/report/markdown")
+        assert resp.status_code == 200
+        assert resp.headers["content-type"] == "text/markdown; charset=utf-8"
+        content = resp.text
+        assert "# Audit Report" in content
+        assert "## Summary" in content
+
+    def test_report_html_returns_html(self):
+        client.post("/scan", json={
+            "input_type": "code",
+            "code": SQL_INJECTION_CODE,
+            "language": "python",
+        })
+        resp = client.get("/report/html")
+        assert resp.status_code == 200
+        assert "text/html" in resp.headers["content-type"]
+        content = resp.text
+        assert "<!DOCTYPE html>" in content
+        assert "<html" in content
 
     def test_findings_empty_before_scan(self):
         """Before any scan, sub-resources should return empty structures."""
