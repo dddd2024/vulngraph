@@ -10,6 +10,8 @@ The AuditOrchestrator coordinates the entire audit process:
 6. Generate final audit result
 """
 
+from typing import Any
+
 from audit_core.models import (
     CodeUnit, RawFinding, AgentHypothesis, AgentLog,
     JudgeDecision, EvidenceBundle, AuditSummary, AuditResult
@@ -29,20 +31,103 @@ class AuditOrchestrator:
     
     This is the primary entry point for new audit workflows.
     It coordinates all components to perform a complete security audit.
+    
+    Supports optional LLM integration:
+    - Pass an LLMClientBase instance via llm_client parameter
+    - Or pass a dict config via llm_config to auto-create a client
+    - If neither is provided, agents use rule-based fallback (no API key needed)
     """
     
-    def __init__(self, registry: AnalyzerRegistry | None = None):
+    def __init__(
+        self,
+        registry: AnalyzerRegistry | None = None,
+        llm_client: Any | None = None,
+        llm_config: dict[str, Any] | None = None,
+    ):
         """
         Initialize the orchestrator.
         
         Args:
             registry: Optional analyzer registry (defaults to build_default_registry)
+            llm_client: Optional LLMClientBase instance for LLM-powered analysis.
+                        When provided, AnalysisAgent will use this client instead
+                        of rule-based fallback.
+            llm_config: Optional dict for creating an LLM client via factory.
+                        Example: {"provider": "mock"} or {"provider": "openai", "api_key": "..."}
+                        Ignored if llm_client is directly provided.
         """
         self.registry = registry or build_default_registry()
         self.repo_loader = RepoLoader()
         self.recon_agent = ReconAgent()
-        self.analysis_agent = AnalysisAgent()
         self.judge_agent = JudgeAgent()
+        
+        # Resolve LLM client
+        resolved_client = self._resolve_llm_client(llm_client, llm_config)
+        self.analysis_agent = AnalysisAgent(llm_client=resolved_client)
+        self._llm_client = resolved_client
+    
+    @staticmethod
+    def _resolve_llm_client(
+        llm_client: Any | None,
+        llm_config: dict[str, Any] | None,
+    ) -> Any | None:
+        """
+        Resolve the LLM client from direct instance or config dict.
+        
+        Priority:
+        1. Direct llm_client instance (if provided)
+        2. Factory-created client from llm_config
+        3. None (fallback mode)
+        
+        Args:
+            llm_client: Direct LLMClientBase instance
+            llm_config: Config dict for factory creation
+            
+        Returns:
+            LLMClientBase instance or None
+        """
+        if llm_client is not None:
+            return llm_client
+        
+        if llm_config is not None:
+            try:
+                from llm.base import LLMClientFactory
+                provider = llm_config.get("provider", "mock")
+                return LLMClientFactory.create(
+                    provider=provider,
+                    model=llm_config.get("model"),
+                    api_key=llm_config.get("api_key"),
+                    **{k: v for k, v in llm_config.items()
+                       if k not in ("provider", "model", "api_key")}
+                )
+            except (ImportError, ValueError) as exc:
+                import logging
+                logging.getLogger(__name__).warning(
+                    "Failed to create LLM client from config: %s. "
+                    "Using fallback mode.", exc
+                )
+                return None
+        
+        return None
+    
+    def set_llm_client(self, client: Any) -> None:
+        """
+        Set or update the LLM client on the orchestrator and its agents.
+        
+        Args:
+            client: LLMClientBase instance
+        """
+        self._llm_client = client
+        self.analysis_agent.set_llm_client(client)
+    
+    def get_llm_client(self) -> Any | None:
+        """
+        Get the current LLM client.
+        
+        Returns:
+            Current LLMClientBase instance or None
+        """
+        return self._llm_client
     
     def scan_code(self, code: str, language: str | None = None) -> AuditResult:
         """
@@ -69,6 +154,20 @@ class AuditOrchestrator:
             AuditResult with findings and evidence
         """
         code_units = self.repo_loader.load_local_repo(repo_path)
+        return self._run_audit(code_units)
+    
+    def scan_github(self, repo_url: str, branch: str | None = None) -> AuditResult:
+        """
+        Scan a GitHub repository.
+        
+        Args:
+            repo_url: GitHub repository URL
+            branch: Optional branch name
+            
+        Returns:
+            AuditResult with findings and evidence
+        """
+        code_units = self.repo_loader.load_github_repo(repo_url, branch)
         return self._run_audit(code_units)
     
     def scan(
@@ -104,12 +203,9 @@ class AuditOrchestrator:
             return self.scan_path(repo_path)
         
         elif input_type == "github":
-            # TODO: Implement GitHub repo scanning
-            # For now, return empty result
-            return AuditResult(
-                summary=AuditSummary(),
-                metadata={"error": "GitHub repo scanning not yet implemented"}
-            )
+            if repo_url is None:
+                raise ValueError("repo_url is required for input_type='github'")
+            return self.scan_github(repo_url)
         
         else:
             raise ValueError(f"Unknown input_type: {input_type}")
