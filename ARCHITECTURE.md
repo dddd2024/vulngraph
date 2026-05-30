@@ -13,10 +13,12 @@ VulnPatch is a modular security audit platform that combines static analysis wit
 │                                                                              │
 │  ┌─────────────────────────────────────────────────────────────────────┐   │
 │  │                         API Layer                                    │   │
-│  │  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────────────┐ │   │
-│  │  │ /scan/new   │  │ /health     │  │ /scan (legacy)              │ │   │
-│  │  │ (new)       │  │             │  │ (backward compatible)       │ │   │
-│  │  └─────────────┘  └─────────────┘  └─────────────────────────────┘ │   │
+│  │  ┌──────────┐  ┌──────────┐  ┌───────────┐  ┌───────────┐  ┌──────────┐ │   │
+│  │  │ POST     │  │ GET      │  │ GET       │  │ GET       │  │ Legacy   │ │   │
+│  │  │ /scan    │  │ /health  │  │ /findings │  │ /report   │  │ routes   │ │   │
+│  │  │ (primary)│  │          │  │ /evidence  │  │ /agents   │  │          │ │   │
+│  │  └──────────┘  └──────────┘  │ /logs     │  │ /json     │  └──────────┘ │   │
+│  │                              └───────────┘  └───────────┘               │   │
 │  └─────────────────────────────────────────────────────────────────────┘   │
 │                                    │                                         │
 │                                    ▼                                         │
@@ -180,9 +182,21 @@ result = orchestrator.scan(
 
 ### API Endpoints
 
-- `POST /scan/new` - New scan endpoint
+**Primary (new architecture):**
+- `POST /scan` - Primary scan endpoint (delegates to AuditOrchestrator)
+- `GET /findings` - Findings from most recent scan
+- `GET /evidence` - Evidence bundles from most recent scan
+- `GET /agents/logs` - Agent logs from most recent scan
+- `GET /report/json` - Full audit result as JSON
 - `GET /health` - Health check
-- `POST /scan` - Legacy scan endpoint (backward compatible)
+
+**Legacy (backward compatible):**
+- `POST /analyze-input` - Old scan interface
+- `POST /analyze-input-async` - Old async scan
+- `GET /jobs/{job_id}` - Async job status
+- `POST /analyze` - Full pipeline run
+- `GET /graph` - Call graph
+- `POST /knowledge-graph` - Knowledge graph
 
 ## Future Work
 
