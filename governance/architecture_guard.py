@@ -66,6 +66,9 @@ class ArchitectureGuard:
             ("模块边界合规性", self.check_module_boundaries),
             ("旧入口使用检查", self.check_legacy_entry_points),
             ("patch 引用检查", self.check_patch_references),
+            ("legacy.py 文件检查", self.check_legacy_file_exists),
+            ("全局禁止导入检查", self.check_forbidden_imports_globally),
+            ("detector 导入检查", self.check_detector_imports),
         ]
         
         all_passed = True
@@ -98,6 +101,11 @@ class ArchitectureGuard:
         """检查禁止的跨模块导入（从 YAML 读取规则）"""
         forbidden_rules = self.boundaries_config.get("forbidden_imports", {})
         
+        # 允许导入 detector 的例外文件
+        allowed_files = {
+            "analyzers/legacy_adapter.py",  # 适配器允许导入 detector
+        }
+        
         passed = True
         
         for module_dir, forbidden_modules in forbidden_rules.items():
@@ -108,8 +116,10 @@ class ArchitectureGuard:
             for py_file in module_path.rglob("*.py"):
                 if py_file.name == "__init__.py":
                     continue
-                # 排除 legacy.py（向后兼容）
-                if py_file.name == "legacy.py":
+                
+                # 检查是否是允许的例外文件
+                relative_path = str(py_file.relative_to(self.project_root))
+                if relative_path in allowed_files:
                     continue
                     
                 imports = self._extract_imports(py_file)
@@ -272,24 +282,64 @@ class ArchitectureGuard:
             for py_file in api_routes_dir.rglob("*.py"):
                 if py_file.name == "__init__.py":
                     continue
-                if py_file.name == "legacy.py":
-                    # legacy.py 允许导入旧模块（向后兼容）
-                    continue
                     
                 content = py_file.read_text()
                 imports = self._extract_imports(py_file)
                 
                 # 检查是否导入旧入口
-                forbidden_imports = ["analysis_engine", "main", "detector", "parser"]
+                forbidden_imports = ["analysis_engine", "main", "parser"]
                 for imp in imports:
                     for forbidden in forbidden_imports:
-                        if imp == forbidden or imp.startswith(f"{ forbidden }."):
+                        if imp == forbidden or imp.startswith(f"{forbidden}."):
                             violation = f"{py_file}: 新 API 路由禁止导入旧入口 '{imp}'"
                             self.violations.append(violation)
                             print(f"  ❌ {violation}")
                             passed = False
         
-        # 检查 analyzers/ 是否导入旧 detector pipeline
+        if passed:
+            print("  ✅ 未发现错误使用旧入口")
+        
+        return passed
+    
+    def check_detector_imports(self) -> bool:
+        """检查新模块是否导入旧 detector pipeline（除 legacy_adapter.py 外）"""
+        passed = True
+        
+        # 需要检查的新模块目录
+        new_modules = [
+            "audit_core", "ingest", "agents", "evidence", 
+            "knowledge", "report", "api"
+        ]
+        
+        # 允许导入 detector 的例外文件
+        allowed_files = {
+            "analyzers/legacy_adapter.py",  # 适配器允许导入
+        }
+        
+        for module_name in new_modules:
+            module_dir = self.project_root / module_name
+            if not module_dir.exists():
+                continue
+            
+            for py_file in module_dir.rglob("*.py"):
+                if py_file.name == "__init__.py":
+                    continue
+                
+                # 检查是否是允许的例外文件
+                relative_path = str(py_file.relative_to(self.project_root))
+                if relative_path in allowed_files:
+                    continue
+                
+                imports = self._extract_imports(py_file)
+                
+                for imp in imports:
+                    if imp == "detector" or imp.startswith("detector."):
+                        violation = f"{py_file}: 新模块禁止导入旧 detector pipeline '{imp}'（仅 analyzers/legacy_adapter.py 允许）"
+                        self.violations.append(violation)
+                        print(f"  ❌ {violation}")
+                        passed = False
+        
+        # 检查 analyzers/ 目录（除 legacy_adapter.py 外）
         analyzers_dir = self.project_root / "analyzers"
         if analyzers_dir.exists():
             for py_file in analyzers_dir.rglob("*.py"):
@@ -298,19 +348,18 @@ class ArchitectureGuard:
                 if py_file.name == "legacy_adapter.py":
                     # legacy_adapter.py 允许导入 detector（适配器）
                     continue
-                    
-                content = py_file.read_text()
+                
                 imports = self._extract_imports(py_file)
                 
                 for imp in imports:
-                    if imp.startswith("detector"):
-                        violation = f"{py_file}: 新代码禁止导入旧 detector pipeline '{imp}'"
+                    if imp == "detector" or imp.startswith("detector."):
+                        violation = f"{py_file}: 新代码禁止导入旧 detector pipeline '{imp}'（仅 legacy_adapter.py 允许）"
                         self.violations.append(violation)
                         print(f"  ❌ {violation}")
                         passed = False
         
         if passed:
-            print("  ✅ 未发现错误使用旧入口")
+            print("  ✅ 新模块未导入旧 detector pipeline（仅 legacy_adapter.py 允许）")
         
         return passed
     
@@ -357,6 +406,58 @@ class ArchitectureGuard:
                 if stripped.startswith("#") or stripped.startswith('"""') or stripped.startswith("'''"):
                     return True
         return False
+    
+    def check_legacy_file_exists(self) -> bool:
+        """检查仓库中是否存在 api/routes/legacy.py"""
+        passed = True
+        
+        legacy_file = self.project_root / "api" / "routes" / "legacy.py"
+        if legacy_file.exists():
+            violation = f"{legacy_file}: 仓库中不允许存在 legacy.py 文件"
+            self.violations.append(violation)
+            print(f"  ❌ {violation}")
+            passed = False
+        
+        if passed:
+            print("  ✅ 仓库中不存在 legacy.py 文件")
+        
+        return passed
+    
+    def check_forbidden_imports_globally(self) -> bool:
+        """检查新代码是否导入禁止的模块（analysis_engine、main、patch）"""
+        passed = True
+        
+        # 全局禁止导入的模块
+        globally_forbidden = ["analysis_engine", "main", "patch"]
+        
+        # 需要排除的目录
+        excluded_dirs = ["governance", ".venv", "venv", "node_modules", "__pycache__", ".git"]
+        
+        # 检查所有 Python 文件（排除测试文件和 __init__.py）
+        for py_file in self.project_root.rglob("*.py"):
+            # 排除特定目录
+            if any(excluded in py_file.parts for excluded in excluded_dirs):
+                continue
+            # 排除测试文件
+            if "test" in py_file.name or "tests" in py_file.parts:
+                continue
+            if py_file.name == "__init__.py":
+                continue
+            
+            imports = self._extract_imports(py_file)
+            
+            for imp in imports:
+                for forbidden in globally_forbidden:
+                    if imp == forbidden or imp.startswith(f"{forbidden}."):
+                        violation = f"{py_file}: 新代码禁止导入 '{forbidden}'"
+                        self.violations.append(violation)
+                        print(f"  ❌ {violation}")
+                        passed = False
+        
+        if passed:
+            print("  ✅ 未发现禁止的全局导入（analysis_engine、main、patch）")
+        
+        return passed
     
     def _extract_imports(self, file_path: Path) -> List[str]:
         """提取 Python 文件中的所有导入"""

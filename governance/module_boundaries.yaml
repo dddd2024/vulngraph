@@ -261,12 +261,13 @@ modules:
       - api/routes/evidence.py
       - api/routes/agents.py
       - api/routes/report.py
-      - api/routes/legacy.py
     
     dependencies:
       - audit_core
 
 # 禁止的跨模块导入
+# 注意：detector 导入限制由 architecture_guard.py 的 check_detector_imports 方法专门处理
+# （仅 analyzers/legacy_adapter.py 允许导入 detector）
 forbidden_imports:
   analyzers:
     - agents
@@ -276,12 +277,15 @@ forbidden_imports:
   agents:
     - ingest.repo_loader  # 不能直接扫描
     - patch  # 禁止导入 patch 模块
+    - detector  # 禁止导入旧 detector pipeline
   
   evidence:
     - patch  # 禁止导入 patch 模块
+    - detector  # 禁止导入旧 detector pipeline
   
   report:
     - patch  # 禁止导入 patch 模块
+    - detector  # 禁止导入旧 detector pipeline
   
   api:
     - analyzers.pattern_analyzer  # 不能直接调用
@@ -291,6 +295,15 @@ forbidden_imports:
     - patch  # 禁止导入 patch 模块
     - detector  # 禁止导入旧 detector pipeline
     - parser  # 禁止导入旧 parser
+  
+  audit_core:
+    - detector  # 禁止导入旧 detector pipeline
+  
+  ingest:
+    - detector  # 禁止导入旧 detector pipeline
+  
+  knowledge:
+    - detector  # 禁止导入旧 detector pipeline
 
 # 数据流向
 data_flow:
