@@ -409,14 +409,25 @@ def _build_display(
 
 
 def _normalize_file_path(file_path: str | Path, root: Path) -> str:
-    """将文件路径规范化为相对于 root 的相对路径，统一使用正斜杠."""
+    """将文件路径规范化为相对于 root 的相对路径，统一使用正斜杠.
+
+    - 如果 file_path 是绝对路径且位于 root 下，转成相对 root 的路径
+    - 如果 file_path 是绝对路径但不在 root 下，返回文件名
+    - 如果 file_path 本来就是相对路径，保留原始相对路径层级
+    """
     p = Path(file_path)
+
+    # 如果本来就是相对路径，直接统一斜杠格式
+    if not p.is_absolute():
+        return str(p).replace("\\", "/")
+
+    # 是绝对路径，尝试转为相对于 root 的路径
     try:
         rel = p.relative_to(root)
+        return str(rel).replace("\\", "/")
     except ValueError:
-        # 路径不在 root 下，直接返回文件名
-        rel = Path(p.name)
-    return str(rel).replace("\\", "/")
+        # 不在 root 下，返回文件名
+        return str(Path(p.name)).replace("\\", "/")
 
 
 def _build_finding_output(vuln: dict[str, Any], root: Path | None = None) -> dict[str, Any]:

@@ -157,6 +157,7 @@ def health() -> dict[str, str]:
 
 @app.get("/config/models")
 def config_models() -> dict[str, Any]:
+    """获取可用模型列表，仅用于知识图谱 AI 增强配置。"""
     return _get_model_catalog()
 
 

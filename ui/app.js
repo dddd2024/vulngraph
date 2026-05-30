@@ -32,6 +32,7 @@
     kgAiMode: document.getElementById("kgAiMode"),
     kgModelName: document.getElementById("kgModelName"),
     kgApiKey: document.getElementById("kgApiKey"),
+    kgSyncNeo4j: document.getElementById("kgSyncNeo4j"),
     graphOut: document.getElementById("graphOut"),
     rawOut: document.getElementById("rawOut"),
     copyJsonBtn: document.getElementById("copyJsonBtn")
@@ -51,12 +52,16 @@
       navAnalyze: "分析", navFindings: "漏洞", navGraph: "图谱", navRaw: "原始 JSON",
       titleOverview: "安全总览", titleAnalyze: "分析目标", titleProgress: "分析进度",
       titleFindings: "漏洞发现", titleDetail: "漏洞详情", titleAdvanced: "高级分析", titleRaw: "高级原始 JSON",
-      kpiFindings: "漏洞数量", kpiMaxRisk: "最大风险", kpiCritical: "高危问题", kpiEngine: "引擎", kpiSkipped: "跳过文件",
+      kpiFindings: "漏洞数量", kpiMaxRisk: "最大风险", kpiCritical: "高危问题", kpiEngine: "多引擎检测", kpiSkipped: "跳过文件",
       segCode: "代码片段", segGithub: "GitHub 仓库",
       analyzeBtn: "开始分析", resetBtn: "重置演示项目", testsBtn: "运行检测回归测试",
       copyJson: "复制 JSON",
       stepPrepare: "准备", stepDetect: "检测", stepReport: "报告", stepDone: "完成",
-      ready: "就绪", none: "无", online: "在线", offline: "离线", idle: "空闲"
+      ready: "就绪", none: "无", online: "在线", offline: "离线", idle: "空闲",
+      engineDisplay: "多引擎检测",
+      kgAiMode: "知识图谱 AI 模式", kgModelName: "模型名称（可选）", kgApiKey: "API Key（可选）",
+      kgSyncNeo4j: "同步到 Neo4j",
+      phModelName: "留空使用默认模型", phApiKey: "留空使用 .env 配置"
     },
     "en-US": {
       productSub: "Multi-Language Static Analysis and Knowledge Graph Based Vulnerability Detection",
@@ -64,12 +69,16 @@
       navAnalyze: "Analyze", navFindings: "Findings", navGraph: "Graph", navRaw: "Raw JSON",
       titleOverview: "Security Overview", titleAnalyze: "Analyze Target", titleProgress: "Analysis Progress",
       titleFindings: "Findings", titleDetail: "Finding Detail", titleAdvanced: "Advanced Analysis", titleRaw: "Advanced Raw JSON",
-      kpiFindings: "Findings", kpiMaxRisk: "Max Risk", kpiCritical: "Critical Issues", kpiEngine: "Engine", kpiSkipped: "Skipped Files",
+      kpiFindings: "Findings", kpiMaxRisk: "Max Risk", kpiCritical: "Critical Issues", kpiEngine: "Multi-engine Detection", kpiSkipped: "Skipped Files",
       segCode: "Code Snippet", segGithub: "GitHub Repository",
       analyzeBtn: "Start Analyze", resetBtn: "Reset Demo", testsBtn: "Run Detection Regression Tests",
       copyJson: "Copy JSON",
       stepPrepare: "Prepare", stepDetect: "Detect", stepReport: "Report", stepDone: "Done",
-      ready: "ready", none: "none", online: "online", offline: "offline", idle: "idle"
+      ready: "ready", none: "none", online: "online", offline: "offline", idle: "idle",
+      engineDisplay: "Multi-engine Detection",
+      kgAiMode: "Knowledge Graph AI Mode", kgModelName: "Model Name (optional)", kgApiKey: "API Key (optional)",
+      kgSyncNeo4j: "Sync to Neo4j",
+      phModelName: "Leave blank to use default model", phApiKey: "Leave blank to use .env config"
     }
   };
   function t(k) { return (I18N[currentLang] && I18N[currentLang][k]) || k; }
@@ -110,7 +119,7 @@
   }
 
   function setTopbarState(jobText) {
-    els.topEngine.textContent = "规则引擎";
+    els.topEngine.textContent = t("engineDisplay");
     if (jobText) els.topJob.textContent = jobText === "idle" ? t("idle") : jobText;
   }
 
@@ -321,7 +330,7 @@
     els.kpiMaxRisk.classList.remove("risk-high", "risk-mid", "risk-low", "risk-zero");
     els.kpiMaxRisk.classList.add(maxRiskClass(maxRisk));
     els.kpiCritical.textContent = String(critical);
-    els.kpiEngine.textContent = "规则引擎";
+    els.kpiEngine.textContent = t("engineDisplay");
     els.kpiSkipped.textContent = String(skipped);
   }
 
@@ -574,10 +583,11 @@
     const aiMode = els.kgAiMode ? els.kgAiMode.value : "rule";
     const modelName = els.kgModelName ? els.kgModelName.value.trim() : "";
     const apiKey = els.kgApiKey ? els.kgApiKey.value.trim() : "";
+    const syncNeo4j = els.kgSyncNeo4j ? els.kgSyncNeo4j.checked : false;
     const payload = {
       vulnerabilities: lastAnalysisResult.vulnerabilities,
       ai_mode: aiMode,
-      sync_neo4j: true
+      sync_neo4j: syncNeo4j
     };
     if (modelName) payload.model_name = modelName;
     if (apiKey) payload.api_key = apiKey;
@@ -654,6 +664,17 @@
     document.getElementById("resetBtn").textContent = t("resetBtn");
     document.getElementById("testsBtn").textContent = t("testsBtn");
     document.getElementById("copyJsonBtn").textContent = t("copyJson");
+    // 知识图谱 AI 控件 I18N
+    const labelKgAiMode = document.getElementById("labelKgAiMode");
+    const labelKgModelName = document.getElementById("labelKgModelName");
+    const labelKgApiKey = document.getElementById("labelKgApiKey");
+    const labelKgSyncNeo4j = document.getElementById("labelKgSyncNeo4j");
+    if (labelKgAiMode) labelKgAiMode.textContent = t("kgAiMode");
+    if (labelKgModelName) labelKgModelName.textContent = t("kgModelName");
+    if (labelKgApiKey) labelKgApiKey.textContent = t("kgApiKey");
+    if (labelKgSyncNeo4j) labelKgSyncNeo4j.textContent = t("kgSyncNeo4j");
+    if (els.kgModelName) els.kgModelName.placeholder = t("phModelName");
+    if (els.kgApiKey) els.kgApiKey.placeholder = t("phApiKey");
     const steps = document.querySelectorAll(".step");
     if (steps.length === 4) {
       steps[0].textContent = t("stepPrepare");

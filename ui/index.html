@@ -129,7 +129,7 @@
         <h2 id="titleAdvanced">Advanced Analysis</h2>
         <div class="form-grid" style="margin-bottom: 12px;">
           <div style="width: 140px;">
-            <label for="kgAiMode">知识图谱 AI 模式</label>
+            <label for="kgAiMode" id="labelKgAiMode">知识图谱 AI 模式</label>
             <select id="kgAiMode">
               <option value="rule">Rule</option>
               <option value="cloud">Cloud</option>
@@ -137,13 +137,19 @@
             </select>
           </div>
           <div style="flex: 1;">
-            <label for="kgModelName">模型名称（可选）</label>
+            <label for="kgModelName" id="labelKgModelName">模型名称（可选）</label>
             <input id="kgModelName" placeholder="留空使用默认模型">
           </div>
           <div style="flex: 1;">
-            <label for="kgApiKey">API Key（可选）</label>
+            <label for="kgApiKey" id="labelKgApiKey">API Key（可选）</label>
             <input id="kgApiKey" type="password" placeholder="留空使用 .env 配置">
           </div>
+        </div>
+        <div class="form-row" style="margin-bottom: 12px;">
+          <label class="checkbox-label">
+            <input type="checkbox" id="kgSyncNeo4j">
+            <span id="labelKgSyncNeo4j">同步到 Neo4j</span>
+          </label>
         </div>
         <div class="actions">
           <button id="graphBtn" class="btn">查看调用图</button>
