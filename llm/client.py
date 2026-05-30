@@ -19,7 +19,6 @@ from llm.exceptions import (
     LLMError,
     LLMTimeoutError,
 )
-from llm.schemas import parse_patch_json
 
 try:
     from openai import OpenAI
@@ -48,10 +47,6 @@ class LLMClient:
         if self.ai_mode == "rule":
             raise LLMConfigError("rule mode does not allow external LLM calls.")
         raise LLMConfigError(f"unsupported ai_mode for LLM generation: {self.ai_mode}")
-
-    def generate_patch_json(self, prompt: str) -> dict[str, str]:
-        content, _ = self.generate_text(prompt)
-        return parse_patch_json(content)
 
     def _generate_cloud_text(self, prompt: str) -> tuple[str, str]:
         if OpenAI is None:

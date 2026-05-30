@@ -1,21 +1,21 @@
-Security Auto-Fix Demo Runbook
-==============================
+VulnGraph Sentinel - Vulnerability Detection Demo Runbook
+=======================================================
 
 1) Start service
-   # 先编辑项目根目录 .env，填写豆包 API 信息（DOUBAO_API_KEY/DOUBAO_MODEL）
-   .\.venv\Scripts\python -m uvicorn api.server:app --host 127.0.0.1 --port 8000 --reload
+   # 先编辑项目根目录 .env，填写豆包 API 信息（可选，用于知识图谱增强）
+   .\env\Scripts\python -m uvicorn api.server:app --host 127.0.0.1 --port 8000 --reload
 
 2) Open UI
    http://127.0.0.1:8000
 
 3) Presenter flow
    - Click "Reset Demo State"
-   - Click "Run Analyze Pipeline"
-   - Click "Open fix.patch"
-   - Click "Load Graph"
-   - Click "Run Full Tests"
+   - Enter code snippet or GitHub repository URL
+   - Click "Start Analyze"
+   - View vulnerability findings with risk scores
+   - Click "View Call Graph" for function call analysis
+   - Click "View Knowledge Graph" for vulnerability knowledge graph
 
 4) Terminal fallback commands
-   .\.venv\Scripts\python main.py
-   .\.venv\Scripts\python -m pytest -q
-
+   .\env\Scripts\python main.py
+   .\env\Scripts\python -m pytest -q

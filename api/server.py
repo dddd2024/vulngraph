@@ -32,20 +32,15 @@ from graph.vuln_knowledge_graph import (
 from main import run_pipeline
 from parser.call_graph import build_call_graph, export_edges
 
-app = FastAPI(title="AI Vulnerability Auto-Fix Demo")
+app = FastAPI(title="VulnGraph Sentinel - Vulnerability Detection System")
 ROOT = Path(__file__).resolve().parents[1]
 app.mount("/ui", StaticFiles(directory=str(ROOT / "ui")), name="ui")
 JOBS: dict[str, dict[str, Any]] = {}
 JOBS_LOCK = threading.Lock()
-SESSION_KEYS_LOCK = threading.Lock()
-SESSION_KEYS: dict[str, str] = {}
 
 
 class AnalyzeInputRequest(BaseModel):
     input_type: str = Field(pattern="^(code|github)$")
-    ai_mode: str = Field(default="rule", pattern="^(rule|cloud|local)$")
-    model_name: str | None = None
-    api_key: str | None = None
     code: str | None = None
     repo_url: str | None = None
     language: str = Field(
@@ -60,12 +55,6 @@ class KnowledgeGraphRequest(BaseModel):
     model_name: str | None = None
     api_key: str | None = None
     sync_neo4j: bool = True
-
-
-class SessionApiKeyRequest(BaseModel):
-    ai_mode: str = Field(pattern="^(cloud|local)$")
-    model_name: str | None = None
-    api_key: str
 
 
 def _strip_env_value(raw: str) -> str:
@@ -156,29 +145,6 @@ def _update_job(job_id: str, **kwargs: Any) -> None:
             JOBS[job_id]["updated_at"] = time.time()
 
 
-def _session_key_slot(ai_mode: str, model_name: str | None) -> str:
-    model = (model_name or "").strip() or "__default__"
-    return f"{ai_mode}:{model}"
-
-
-def _resolve_api_key(
-    *, ai_mode: str, model_name: str | None, payload_api_key: str | None
-) -> str | None:
-    inline = (payload_api_key or "").strip()
-    if inline:
-        return inline
-    if ai_mode not in {"cloud", "local"}:
-        return None
-    with SESSION_KEYS_LOCK:
-        exact = SESSION_KEYS.get(_session_key_slot(ai_mode, model_name))
-        if exact:
-            return exact
-        fallback = SESSION_KEYS.get(_session_key_slot(ai_mode, None))
-        if fallback:
-            return fallback
-    return None
-
-
 @app.get("/")
 def index() -> FileResponse:
     return FileResponse(str(ROOT / "ui" / "index.html"))
@@ -194,23 +160,6 @@ def config_models() -> dict[str, Any]:
     return _get_model_catalog()
 
 
-@app.post("/session/api-key")
-def set_session_api_key(payload: SessionApiKeyRequest) -> dict[str, Any]:
-    slot = _session_key_slot(payload.ai_mode, payload.model_name)
-    api_key = payload.api_key.strip()
-    if not api_key:
-        raise HTTPException(status_code=400, detail="api_key 不能为空。")
-    with SESSION_KEYS_LOCK:
-        SESSION_KEYS[slot] = api_key
-    masked = f"{api_key[:4]}...{api_key[-4:]}" if len(api_key) > 8 else "已设置"
-    return {
-        "ok": True,
-        "ai_mode": payload.ai_mode,
-        "model_name": (payload.model_name or "").strip() or None,
-        "masked": masked,
-    }
-
-
 @app.post("/analyze")
 def analyze() -> dict[str, Any]:
     try:
@@ -222,16 +171,8 @@ def analyze() -> dict[str, Any]:
 @app.post("/analyze-input")
 def analyze_input_api(payload: AnalyzeInputRequest) -> dict[str, Any]:
     try:
-        resolved_api_key = _resolve_api_key(
-            ai_mode=payload.ai_mode,
-            model_name=payload.model_name,
-            payload_api_key=payload.api_key,
-        )
         return analyze_input(
             input_type=payload.input_type,
-            ai_mode=payload.ai_mode,
-            model_name=payload.model_name,
-            api_key=resolved_api_key,
             code=payload.code,
             repo_url=payload.repo_url,
             language_hint=payload.language if payload.language != "auto" else None,
@@ -269,16 +210,8 @@ def analyze_input_async(payload: AnalyzeInputRequest) -> dict[str, Any]:
             )
 
         try:
-            resolved_api_key = _resolve_api_key(
-                ai_mode=payload.ai_mode,
-                model_name=payload.model_name,
-                payload_api_key=payload.api_key,
-            )
             result = analyze_input(
                 input_type=payload.input_type,
-                ai_mode=payload.ai_mode,
-                model_name=payload.model_name,
-                api_key=resolved_api_key,
                 code=payload.code,
                 repo_url=payload.repo_url,
                 progress_callback=on_progress,
@@ -326,14 +259,7 @@ def reset() -> dict[str, Any]:
 @app.post("/run-tests")
 def run_tests() -> dict[str, Any]:
     try:
-        auto_generated = False
-        if not (ROOT / "tests" / "test_fix.py").exists():
-            run_pipeline(str(ROOT))
-            auto_generated = True
         result = run_demo_tests(str(ROOT))
-        result["auto_generated"] = auto_generated
-        if auto_generated:
-            result["message"] = "未检测到 test_fix.py，已自动先执行分析与补丁生成。"
         return result
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
@@ -349,16 +275,11 @@ def graph() -> dict[str, Any]:
 def knowledge_graph(payload: KnowledgeGraphRequest) -> dict[str, Any]:
     if not payload.vulnerabilities:
         raise HTTPException(status_code=400, detail="vulnerabilities 不能为空。")
-    resolved_api_key = _resolve_api_key(
-        ai_mode=payload.ai_mode,
-        model_name=payload.model_name,
-        payload_api_key=payload.api_key,
-    )
     graph_data = build_vulnerability_knowledge_graph(
         payload.vulnerabilities,
         ai_mode=payload.ai_mode,
         model_name=payload.model_name,
-        api_key=resolved_api_key,
+        api_key=payload.api_key,
     )
     output: dict[str, Any] = {
         "graph": graph_data,
@@ -376,13 +297,3 @@ def result() -> dict[str, Any]:
     if not path.exists():
         return {"status": "empty"}
     return json.loads(path.read_text(encoding="utf-8"))
-
-
-@app.get("/artifact/fix.patch")
-def artifact_patch() -> FileResponse:
-    path = ROOT / "fix.patch"
-    if not path.exists():
-        raise HTTPException(status_code=404, detail="fix.patch not found")
-    return FileResponse(str(path))
-
-

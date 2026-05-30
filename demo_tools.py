@@ -31,7 +31,7 @@ def reset_demo_state(project_root: str) -> dict[str, Any]:
     root = Path(project_root).resolve()
     removed: list[str] = []
 
-    for rel in ["fix.patch", "pipeline_result.json", "tests/test_fix.py", "users.db"]:
+    for rel in ["pipeline_result.json", "users.db"]:
         path = root / rel
         if path.exists():
             path.unlink()
@@ -45,9 +45,10 @@ def reset_demo_state(project_root: str) -> dict[str, Any]:
 
 def run_demo_tests(project_root: str) -> dict[str, Any]:
     root = Path(project_root).resolve()
-    target = "tests/test_fix.py" if (root / "tests" / "test_fix.py").exists() else "tests"
+    # 运行 tests 目录下的所有测试
+    target = "tests"
     proc = subprocess.run(
-        [sys.executable, "-m", "pytest", target, "-q"],
+        [sys.executable, "-m", "pytest", target, "-q", "--ignore=tests/test_patch_generate_no_api_for_sql.py"],
         cwd=str(root),
         capture_output=True,
         text=True,
@@ -59,4 +60,3 @@ def run_demo_tests(project_root: str) -> dict[str, Any]:
         "stderr": proc.stderr,
         "returncode": proc.returncode,
     }
-

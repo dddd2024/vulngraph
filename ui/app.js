@@ -4,22 +4,17 @@
   const els = {
     topStatus: document.getElementById("topStatus"),
     topEngine: document.getElementById("topEngine"),
-    topModel: document.getElementById("topModel"),
     topJob: document.getElementById("topJob"),
     langSwitch: document.getElementById("langSwitch"),
     kpiFindings: document.getElementById("kpiFindings"),
     kpiMaxRisk: document.getElementById("kpiMaxRisk"),
     kpiCritical: document.getElementById("kpiCritical"),
-    kpiPatch: document.getElementById("kpiPatch"),
     kpiEngine: document.getElementById("kpiEngine"),
     kpiSkipped: document.getElementById("kpiSkipped"),
     segCode: document.getElementById("segCode"),
     segGithub: document.getElementById("segGithub"),
     codePanel: document.getElementById("codePanel"),
     repoPanel: document.getElementById("repoPanel"),
-    aiMode: document.getElementById("aiMode"),
-    modelName: document.getElementById("modelName"),
-    modelHint: document.getElementById("modelHint"),
     codeInput: document.getElementById("codeInput"),
     languageSelect: document.getElementById("languageSelect"),
     repoUrl: document.getElementById("repoUrl"),
@@ -32,8 +27,6 @@
     findingsList: document.getElementById("findingsList"),
     findingsEmpty: document.getElementById("findingsEmpty"),
     findingDetail: document.getElementById("findingDetail"),
-    patchDiff: document.getElementById("patchDiff"),
-    copyPatchBtn: document.getElementById("copyPatchBtn"),
     graphBtn: document.getElementById("graphBtn"),
     kgBtn: document.getElementById("kgBtn"),
     graphOut: document.getElementById("graphOut"),
@@ -42,45 +35,38 @@
   };
 
   let inputType = "code";
-  let modelCatalog = {
-    cloud: { default_model: null, models: [] },
-    local: { default_model: null, models: [] }
-  };
   let lastAnalysisResult = null;
   let sortedFindings = [];
   let selectedIndex = -1;
   let running = false;
-  let apiKeysBySlot = {};
   let currentLang = "zh-CN";
   let activeLangFilter = "all";
   const I18N = {
     "zh-CN": {
-      productSub: "基于多模型协同检索增强的漏洞补丁生成",
-      service: "服务", engine: "引擎", model: "模型", job: "任务",
-      navAnalyze: "分析", navFindings: "漏洞", navPatch: "补丁", navGraph: "图谱", navRaw: "原始 JSON",
+      productSub: "基于多语言静态分析与知识图谱的漏洞检测系统",
+      service: "服务", engine: "引擎", job: "任务",
+      navAnalyze: "分析", navFindings: "漏洞", navGraph: "图谱", navRaw: "原始 JSON",
       titleOverview: "安全总览", titleAnalyze: "分析目标", titleProgress: "分析进度",
-      titleFindings: "漏洞发现", titleDetail: "漏洞详情", titlePatch: "补丁 Diff", titleAdvanced: "高级分析", titleRaw: "高级原始 JSON",
-      kpiFindings: "漏洞数量", kpiMaxRisk: "最大风险", kpiCritical: "高危问题", kpiPatch: "补丁状态", kpiEngine: "引擎", kpiSkipped: "跳过文件",
+      titleFindings: "漏洞发现", titleDetail: "漏洞详情", titleAdvanced: "高级分析", titleRaw: "高级原始 JSON",
+      kpiFindings: "漏洞数量", kpiMaxRisk: "最大风险", kpiCritical: "高危问题", kpiEngine: "引擎", kpiSkipped: "跳过文件",
       segCode: "代码片段", segGithub: "GitHub 仓库",
       analyzeBtn: "开始分析", resetBtn: "重置演示项目", testsBtn: "运行演示测试",
-      copyPatch: "复制补丁", downloadPatch: "下载 fix.patch", copyJson: "复制 JSON",
-      stepPrepare: "准备", stepDetect: "检测", stepPatch: "修复", stepDone: "完成",
-      ready: "就绪", none: "无", online: "在线", offline: "离线", idle: "空闲",
-      defaultModel: "默认模型"
+      copyJson: "复制 JSON",
+      stepPrepare: "准备", stepDetect: "检测", stepReport: "报告", stepDone: "完成",
+      ready: "就绪", none: "无", online: "在线", offline: "离线", idle: "空闲"
     },
     "en-US": {
-      productSub: "Patch Generation Based on Multi-Model Collaborative Retrieval Enhancement",
-      service: "Service", engine: "Engine", model: "Model", job: "Job",
-      navAnalyze: "Analyze", navFindings: "Findings", navPatch: "Patch", navGraph: "Graph", navRaw: "Raw JSON",
+      productSub: "Multi-Language Static Analysis and Knowledge Graph Based Vulnerability Detection",
+      service: "Service", engine: "Engine", job: "Job",
+      navAnalyze: "Analyze", navFindings: "Findings", navGraph: "Graph", navRaw: "Raw JSON",
       titleOverview: "Security Overview", titleAnalyze: "Analyze Target", titleProgress: "Analysis Progress",
-      titleFindings: "Findings", titleDetail: "Finding Detail", titlePatch: "Patch Diff", titleAdvanced: "Advanced Analysis", titleRaw: "Advanced Raw JSON",
-      kpiFindings: "Findings", kpiMaxRisk: "Max Risk", kpiCritical: "Critical Issues", kpiPatch: "Patch Status", kpiEngine: "Engine", kpiSkipped: "Skipped Files",
+      titleFindings: "Findings", titleDetail: "Finding Detail", titleAdvanced: "Advanced Analysis", titleRaw: "Advanced Raw JSON",
+      kpiFindings: "Findings", kpiMaxRisk: "Max Risk", kpiCritical: "Critical Issues", kpiEngine: "Engine", kpiSkipped: "Skipped Files",
       segCode: "Code Snippet", segGithub: "GitHub Repository",
       analyzeBtn: "Start Analyze", resetBtn: "Reset Demo", testsBtn: "Run Demo Tests",
-      copyPatch: "Copy Patch", downloadPatch: "Download fix.patch", copyJson: "Copy JSON",
-      stepPrepare: "Prepare", stepDetect: "Detect", stepPatch: "Patch", stepDone: "Done",
-      ready: "ready", none: "none", online: "online", offline: "offline", idle: "idle",
-      defaultModel: "default"
+      copyJson: "Copy JSON",
+      stepPrepare: "Prepare", stepDetect: "Detect", stepReport: "Report", stepDone: "Done",
+      ready: "ready", none: "none", online: "online", offline: "offline", idle: "idle"
     }
   };
   function t(k) { return (I18N[currentLang] && I18N[currentLang][k]) || k; }
@@ -115,123 +101,13 @@
     return data;
   }
 
-  function engineLabelFromMode(mode) {
-    const m = String(mode || "").toLowerCase();
-    if (m === "rule") return currentLang === "zh-CN" ? "规则引擎" : "Rule Engine";
-    if (m === "cloud") return currentLang === "zh-CN" ? "云端 AI" : "Cloud AI";
-    if (m === "local") return currentLang === "zh-CN" ? "本地 AI" : "Local AI";
-    return "-";
-  }
-
-  function selectedModelName() {
-    return String(els.modelName.value || "").trim();
-  }
-
-  function loadApiKeyCache() {
-    try {
-      const raw = localStorage.getItem("vulngraph_api_keys");
-      apiKeysBySlot = raw ? JSON.parse(raw) : {};
-      if (!apiKeysBySlot || typeof apiKeysBySlot !== "object") apiKeysBySlot = {};
-    } catch {
-      apiKeysBySlot = {};
-    }
-  }
-
-  function saveApiKeyCache() {
-    try {
-      localStorage.setItem("vulngraph_api_keys", JSON.stringify(apiKeysBySlot));
-    } catch {
-      // ignore localStorage write failures
-    }
-  }
-
-  function apiKeySlot(mode, model) {
-    return String(mode || "") + ":" + (String(model || "").trim() || "__default__");
-  }
-
-  async function syncApiKeyToBackend(mode, model, key) {
-    await call("/session/api-key", "POST", {
-      ai_mode: mode,
-      model_name: model || null,
-      api_key: key
-    });
-  }
-
-  async function promptApiKeyForCurrentModel() {
-    const mode = String(els.aiMode.value || "");
-    const model = selectedModelName();
-    if (!model) return;
-    if (mode !== "cloud" && mode !== "local") return;
-
-    const slot = apiKeySlot(mode, model);
-    const existing = apiKeysBySlot[slot] || "";
-    const input = window.prompt("请输入该模型的 API Key（仅保存在当前浏览器）", existing);
-    if (input === null) return;
-    const key = String(input).trim();
-    if (!key) {
-      delete apiKeysBySlot[slot];
-      saveApiKeyCache();
-      return;
-    }
-    apiKeysBySlot[slot] = key;
-    saveApiKeyCache();
-    try {
-      await syncApiKeyToBackend(mode, model, key);
-    } catch (e) {
-      setError("API Key 同步到后端失败：" + String(e));
-    }
-  }
-
-  async function ensureModeApiKey(mode) {
-    if (mode !== "cloud" && mode !== "local") return true;
-    const modeDefaultSlot = apiKeySlot(mode, "");
-    const existing = apiKeysBySlot[modeDefaultSlot] || "";
-    if (existing) return true;
-    const promptText = mode === "cloud"
-      ? "请输入 Cloud AI 的 API Key（留空则不连接）"
-      : "请输入 Local AI 的 API Key（留空则不连接）";
-    const input = window.prompt(promptText, "");
-    if (input === null) return false;
-    const key = String(input).trim();
-    if (!key) return false;
-    apiKeysBySlot[modeDefaultSlot] = key;
-    saveApiKeyCache();
-    try {
-      await syncApiKeyToBackend(mode, null, key);
-    } catch (e) {
-      setError("API Key 同步到后端失败：" + String(e));
-      return false;
-    }
-    return true;
-  }
-
-  function hasUsableApiForMode(mode) {
-    if (mode === "rule") return true;
-    const modeDefaultSlot = apiKeySlot(mode, "");
-    return Boolean(apiKeysBySlot[modeDefaultSlot]);
-  }
-
-  function currentApiKey() {
-    const mode = String(els.aiMode.value || "");
-    const model = selectedModelName();
-    const slotExact = apiKeySlot(mode, model);
-    const slotDefault = apiKeySlot(mode, "");
-    return apiKeysBySlot[slotExact] || apiKeysBySlot[slotDefault] || null;
-  }
-
-  function currentModelPayload() {
-    const name = selectedModelName();
-    return name || null;
-  }
-
   function setRunning(nextRunning) {
     running = nextRunning;
     els.analyzeInputBtn.disabled = nextRunning;
   }
 
   function setTopbarState(jobText) {
-    els.topEngine.textContent = engineLabelFromMode(els.aiMode.value);
-    els.topModel.textContent = selectedModelName() || t("defaultModel");
+    els.topEngine.textContent = "规则引擎";
     if (jobText) els.topJob.textContent = jobText === "idle" ? t("idle") : jobText;
   }
 
@@ -265,15 +141,15 @@
   function stageToStep(stageText, status, progress) {
     const stage = String(stageText || "").toLowerCase();
     if (status === "completed") return "done";
-    if (stage.includes("patch")) return "patch";
+    if (stage.includes("report")) return "report";
     if (stage.includes("detect") || stage.includes("analysis") || stage.includes("scan")) return "detect";
-    if ((Number(progress) || 0) > 70) return "patch";
+    if ((Number(progress) || 0) > 70) return "report";
     if ((Number(progress) || 0) > 20) return "detect";
     return "prepare";
   }
 
   function updateStepper(activeStep) {
-    const order = ["prepare", "detect", "patch", "done"];
+    const order = ["prepare", "detect", "report", "done"];
     const activeIndex = order.indexOf(activeStep);
     const nodes = document.querySelectorAll(".step");
     nodes.forEach((node) => {
@@ -325,15 +201,6 @@
     });
   }
 
-  function patchModeLabel(mode) {
-    const m = String(mode || "");
-    if (m === "rule") return "Rule";
-    if (m === "cloud") return "Cloud AI";
-    if (m === "local") return "Local AI";
-    if (m === "rule-fallback") return "Rule Fallback";
-    return m || "-";
-  }
-
   function renderFindings(result) {
     const vulns = Array.isArray(result && result.vulnerabilities) ? result.vulnerabilities.slice() : [];
     vulns.sort((a, b) => (Number(b.risk_score) || 0) - (Number(a.risk_score) || 0));
@@ -352,7 +219,6 @@
       selectedIndex = -1;
       els.findingsEmpty.classList.remove("hidden");
       els.findingDetail.textContent = "未发现漏洞。";
-      els.patchDiff.textContent = "暂无补丁内容。";
       return;
     }
 
@@ -402,7 +268,6 @@
       return;
     }
     const engines = engineLabels(item.engines).join(", ") || "-";
-    const modelUsed = item.model_used || "-";
     const lang = item.language || "Python";
     els.findingDetail.innerHTML =
       '<div class="detail-grid">' +
@@ -414,24 +279,7 @@
       '<div class="k">置信度</div><div class="v">' + confidenceLabel(item.confidence) + "</div>" +
       '<div class="k">位置</div><div class="v">' + (item.file || "-") + ":" + (item.line || 0) + "</div>" +
       '<div class="k">检测引擎</div><div class="v">' + engines + "</div>" +
-      '<div class="k">补丁模式</div><div class="v">' + patchModeLabel(item.patch_mode) + "</div>" +
-      '<div class="k">修复原因</div><div class="v">' + (item.patch_reason || "-") + "</div>" +
-      '<div class="k">模型</div><div class="v">' + modelUsed + "</div>" +
       "</div>";
-  }
-
-  function formatPatchDiff(patchText) {
-    const raw = String(patchText || "");
-    if (!raw.trim()) return "暂无补丁内容。";
-    const lines = raw.split("\n").map((line) => {
-      if (line.startsWith("+++") || line.startsWith("---") || line.startsWith("@@")) {
-        return '<span class="diff-meta">' + escapeHtml(line) + "</span>";
-      }
-      if (line.startsWith("+")) return '<span class="diff-add">' + escapeHtml(line) + "</span>";
-      if (line.startsWith("-")) return '<span class="diff-del">' + escapeHtml(line) + "</span>";
-      return escapeHtml(line);
-    });
-    return lines.join("\n");
   }
 
   function escapeHtml(s) {
@@ -454,8 +302,6 @@
     nodes.forEach((node, i) => node.classList.toggle("active", i === idx));
     const item = items[idx];
     renderDetail(item);
-    const diffHtml = formatPatchDiff(item && item.patch);
-    els.patchDiff.innerHTML = diffHtml;
   }
 
   function updateOverview(result) {
@@ -472,8 +318,7 @@
     els.kpiMaxRisk.classList.remove("risk-high", "risk-mid", "risk-low", "risk-zero");
     els.kpiMaxRisk.classList.add(maxRiskClass(maxRisk));
     els.kpiCritical.textContent = String(critical);
-    els.kpiPatch.textContent = vulns.length > 0 ? t("ready") : t("none");
-    els.kpiEngine.textContent = engineLabelFromMode(result.ai_mode || els.aiMode.value);
+    els.kpiEngine.textContent = "规则引擎";
     els.kpiSkipped.textContent = String(skipped);
   }
 
@@ -645,92 +490,6 @@
     }
   }
 
-  function modeModelConfig(mode) {
-    if (mode === "cloud") return modelCatalog.cloud || { default_model: null, models: [] };
-    if (mode === "local") return modelCatalog.local || { default_model: null, models: [] };
-    return { default_model: null, models: [] };
-  }
-
-  function syncModelHint() {
-    const mode = els.aiMode.value;
-    if (mode === "cloud") {
-      const def = modelCatalog.cloud.default_model ? "（默认：" + modelCatalog.cloud.default_model + "）" : "";
-      if (!hasUsableApiForMode(mode)) {
-        els.modelHint.textContent = "请先连接 Cloud API，然后选择可用模型。";
-        els.modelName.disabled = true;
-      } else {
-        els.modelHint.textContent = "Cloud AI 模型来自 .env " + def;
-        els.modelName.disabled = false;
-      }
-    } else if (mode === "local") {
-      const def = modelCatalog.local.default_model ? "（默认：" + modelCatalog.local.default_model + "）" : "";
-      if (!hasUsableApiForMode(mode)) {
-        els.modelHint.textContent = "请先连接 Local API，然后选择可用模型。";
-        els.modelName.disabled = true;
-      } else {
-        els.modelHint.textContent = "Local AI 模型来自 .env " + def;
-        els.modelName.disabled = false;
-      }
-    } else {
-      els.modelHint.textContent = "规则引擎模式不会使用模型。";
-      els.modelName.disabled = true;
-    }
-    setTopbarState();
-  }
-
-  function syncModelOptions() {
-    const mode = els.aiMode.value;
-    const cfg = modeModelConfig(mode);
-    const previous = selectedModelName();
-    els.modelName.innerHTML = "";
-
-    if (mode === "rule") {
-      els.modelName.append(new Option("无需模型", ""));
-      els.modelName.value = "";
-      syncModelHint();
-      return;
-    }
-
-    if (!hasUsableApiForMode(mode)) {
-      els.modelName.append(new Option("请先连接 API", ""));
-      els.modelName.value = "";
-      syncModelHint();
-      return;
-    }
-
-    const defaultLabel = cfg.default_model ? "使用默认模型（" + cfg.default_model + "）" : "使用默认模型";
-    els.modelName.append(new Option(defaultLabel, ""));
-    const models = Array.isArray(cfg.models) ? cfg.models : [];
-    for (const model of models) {
-      els.modelName.append(new Option(model, model));
-    }
-
-    if (previous && models.includes(previous)) {
-      els.modelName.value = previous;
-    } else {
-      els.modelName.value = "";
-    }
-    syncModelHint();
-  }
-
-  async function loadModelCatalog() {
-    try {
-      const cfg = await call("/config/models");
-      if (cfg && typeof cfg === "object") {
-        modelCatalog = {
-          cloud: cfg.cloud || { default_model: null, models: [] },
-          local: cfg.local || { default_model: null, models: [] }
-        };
-      }
-    } catch {
-      modelCatalog = {
-        cloud: { default_model: null, models: [] },
-        local: { default_model: null, models: [] }
-      };
-    }
-    syncModelOptions();
-  }
-
   async function runAnalyze() {
     if (running) return;
     setError("");
@@ -740,9 +499,6 @@
 
     const payload = {
       input_type: inputType,
-      ai_mode: els.aiMode.value,
-      model_name: currentModelPayload(),
-      api_key: currentApiKey(),
       code: els.codeInput.value,
       repo_url: els.repoUrl.value,
       language: inputType === "code" ? els.languageSelect.value : "auto"
@@ -815,9 +571,7 @@
     try {
       const data = await call("/knowledge-graph", "POST", {
         vulnerabilities: lastAnalysisResult.vulnerabilities,
-        ai_mode: els.aiMode.value,
-        model_name: currentModelPayload(),
-        api_key: currentApiKey(),
+        ai_mode: "rule",
         sync_neo4j: true
       });
       renderKnowledgeGraph(data.graph || data);
@@ -838,37 +592,18 @@
   function bindEvents() {
     els.segCode.addEventListener("click", () => setInputType("code"));
     els.segGithub.addEventListener("click", () => setInputType("github"));
-    els.aiMode.addEventListener("change", async () => {
-      const mode = els.aiMode.value;
-      const ok = await ensureModeApiKey(mode);
-      if ((mode === "cloud" || mode === "local") && !ok) {
-        setError("未连接 API，当前模式下模型不可用。");
-      } else {
-        setError("");
-      }
-      syncModelOptions();
-      setTopbarState();
-    });
-    els.modelName.addEventListener("change", async () => {
-      setTopbarState();
-      await promptApiKeyForCurrentModel();
-    });
     els.analyzeInputBtn.addEventListener("click", runAnalyze);
     els.resetBtn.addEventListener("click", runReset);
     els.testsBtn.addEventListener("click", runTests);
     els.graphBtn.addEventListener("click", showGraph);
     els.kgBtn.addEventListener("click", showKnowledgeGraph);
-    els.copyPatchBtn.addEventListener("click", () => {
-      const item = sortedFindings[selectedIndex];
-      copyText(item && item.patch ? item.patch : "");
-    });
     els.copyJsonBtn.addEventListener("click", () => copyText(els.rawOut.textContent));
     els.langSwitch.addEventListener("change", () => {
       currentLang = els.langSwitch.value;
       applyI18n();
       setTopbarState(els.topJob.textContent);
       refreshHealth();
-      updateOverview(lastAnalysisResult || { vulnerabilities: [], ai_mode: els.aiMode.value });
+      updateOverview(lastAnalysisResult || { vulnerabilities: [] });
     });
     // 语言过滤器事件
     document.getElementById("langFilterBar").addEventListener("click", function (e) {
@@ -887,11 +622,9 @@
     document.getElementById("productSub").textContent = t("productSub");
     document.getElementById("labelService").textContent = t("service");
     document.getElementById("labelEngine").textContent = t("engine");
-    document.getElementById("labelModel").textContent = t("model");
     document.getElementById("labelJob").textContent = t("job");
     document.getElementById("navAnalyze").textContent = t("navAnalyze");
     document.getElementById("navFindings").textContent = t("navFindings");
-    document.getElementById("navPatch").textContent = t("navPatch");
     document.getElementById("navGraph").textContent = t("navGraph");
     document.getElementById("navRaw").textContent = t("navRaw");
     document.getElementById("titleOverview").textContent = t("titleOverview");
@@ -899,13 +632,11 @@
     document.getElementById("titleProgress").textContent = t("titleProgress");
     document.getElementById("titleFindings").textContent = t("titleFindings");
     document.getElementById("titleDetail").textContent = t("titleDetail");
-    document.getElementById("titlePatch").textContent = t("titlePatch");
     document.getElementById("titleAdvanced").textContent = t("titleAdvanced");
     document.getElementById("titleRaw").textContent = t("titleRaw");
     document.getElementById("kpiLabelFindings").textContent = t("kpiFindings");
     document.getElementById("kpiLabelMaxRisk").textContent = t("kpiMaxRisk");
     document.getElementById("kpiLabelCritical").textContent = t("kpiCritical");
-    document.getElementById("kpiLabelPatch").textContent = t("kpiPatch");
     document.getElementById("kpiLabelEngine").textContent = t("kpiEngine");
     document.getElementById("kpiLabelSkipped").textContent = t("kpiSkipped");
     document.getElementById("segCode").textContent = t("segCode");
@@ -913,14 +644,12 @@
     document.getElementById("analyzeInputBtn").textContent = t("analyzeBtn");
     document.getElementById("resetBtn").textContent = t("resetBtn");
     document.getElementById("testsBtn").textContent = t("testsBtn");
-    document.getElementById("copyPatchBtn").textContent = t("copyPatch");
-    document.getElementById("downloadPatchBtn").textContent = t("downloadPatch");
     document.getElementById("copyJsonBtn").textContent = t("copyJson");
     const steps = document.querySelectorAll(".step");
     if (steps.length === 4) {
       steps[0].textContent = t("stepPrepare");
       steps[1].textContent = t("stepDetect");
-      steps[2].textContent = t("stepPatch");
+      steps[2].textContent = t("stepReport");
       steps[3].textContent = t("stepDone");
     }
   }
@@ -931,7 +660,7 @@
     applyI18n();
     setInputType("code");
     setTopbarState(t("idle"));
-    updateOverview({ vulnerabilities: [], ai_mode: els.aiMode.value });
+    updateOverview({ vulnerabilities: [] });
     renderFindings({ vulnerabilities: [] });
     setRawJson({ status: "ready" });
     setError("");
@@ -939,9 +668,8 @@
 
   async function init() {
     bindEvents();
-    loadApiKeyCache();
     initDefaults();
-    await Promise.all([refreshHealth(), loadModelCatalog()]);
+    await refreshHealth();
   }
 
   window.onerror = function (message, source, lineno, colno) {

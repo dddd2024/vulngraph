@@ -12,13 +12,12 @@
       <div class="logo">VG</div>
       <div>
         <div class="product-name" id="productName">VulnGraph Sentinel Console</div>
-        <div class="product-sub" id="productSub">基于多模型协同检索增强的漏洞补丁生成</div>
+        <div class="product-sub" id="productSub">基于多语言静态分析与知识图谱的漏洞检测系统</div>
       </div>
     </div>
     <div class="topbar-right">
       <div class="status-chip"><span id="labelService">服务</span> <span id="topStatus">-</span></div>
       <div class="status-chip"><span id="labelEngine">引擎</span> <span id="topEngine">-</span></div>
-      <div class="status-chip"><span id="labelModel">模型</span> <span id="topModel">-</span></div>
       <div class="status-chip"><span id="labelJob">任务</span> <span id="topJob">idle</span></div>
       <select id="langSwitch" class="lang-switch" aria-label="language">
         <option value="zh-CN">中文</option>
@@ -31,7 +30,6 @@
     <aside class="sidebar">
       <a href="#analyze" id="navAnalyze">Analyze</a>
       <a href="#findings" id="navFindings">Findings</a>
-      <a href="#patch" id="navPatch">Patch</a>
       <a href="#graph" id="navGraph">Graph</a>
       <a href="#raw-json" id="navRaw">Raw JSON</a>
     </aside>
@@ -43,7 +41,6 @@
           <div class="kpi"><div class="kpi-label" id="kpiLabelFindings">Findings</div><div id="kpiFindings" class="kpi-value">0</div></div>
           <div class="kpi"><div class="kpi-label" id="kpiLabelMaxRisk">Max Risk</div><div id="kpiMaxRisk" class="kpi-value risk-low">0</div></div>
           <div class="kpi"><div class="kpi-label" id="kpiLabelCritical">Critical Issues</div><div id="kpiCritical" class="kpi-value">0</div></div>
-          <div class="kpi"><div class="kpi-label" id="kpiLabelPatch">Patch Status</div><div id="kpiPatch" class="kpi-value">-</div></div>
           <div class="kpi"><div class="kpi-label" id="kpiLabelEngine">Engine</div><div id="kpiEngine" class="kpi-value">-</div></div>
           <div class="kpi"><div class="kpi-label" id="kpiLabelSkipped">Skipped Files</div><div id="kpiSkipped" class="kpi-value">0</div></div>
         </div>
@@ -55,23 +52,6 @@
         <div class="segmented" role="tablist" aria-label="输入类型">
           <button class="seg-btn active" id="segCode" data-type="code">Code Snippet</button>
           <button class="seg-btn" id="segGithub" data-type="github">GitHub Repository</button>
-        </div>
-
-        <div class="hint" style="margin: 2px 0 10px;">模型配置（引擎 + 模型）</div>
-        <div class="form-grid">
-          <div>
-            <label for="aiMode">引擎接入策略</label>
-            <select id="aiMode">
-              <option value="rule">规则引擎</option>
-              <option value="cloud">Cloud AI</option>
-              <option value="local">Local AI</option>
-            </select>
-          </div>
-          <div>
-            <label for="modelName">模型选择（读取 .env）</label>
-            <select id="modelName"></select>
-            <div class="hint" id="modelHint">规则引擎模式不会使用模型。</div>
-          </div>
         </div>
 
         <div id="codePanel" class="input-panel">
@@ -114,7 +94,7 @@
         <div class="stepper" id="stepper">
           <div class="step" data-step="prepare">Prepare</div>
           <div class="step" data-step="detect">Detect</div>
-          <div class="step" data-step="patch">Patch</div>
+          <div class="step" data-step="report">Report</div>
           <div class="step" data-step="done">Done</div>
         </div>
         <div class="progress-wrap">
@@ -143,15 +123,6 @@
           <h2 id="titleDetail">Finding Detail</h2>
           <div id="findingDetail" class="detail-panel">请选择一条漏洞记录查看详情。</div>
         </div>
-      </section>
-
-      <section id="patch" class="card">
-        <h2 id="titlePatch">Patch Diff</h2>
-        <div class="actions">
-          <button id="copyPatchBtn" class="btn">Copy Patch</button>
-          <a class="btn" id="downloadPatchBtn" href="/artifact/fix.patch" download>Download fix.patch</a>
-        </div>
-        <pre id="patchDiff" class="diff-viewer">暂无补丁内容。</pre>
       </section>
 
       <section id="graph" class="card">

@@ -3,16 +3,6 @@ from __future__ import annotations
 from typing import Any
 
 
-def build_patch_prompt(vuln: dict[str, Any], original: str, rule_diff: str) -> str:
-    return (
-        "你是代码安全修复助手。请针对以下漏洞给出简短补丁（尽量 unified diff）。\n\n"
-        f"漏洞类型: {vuln['type']}\n"
-        f"文件: {vuln['file']}:{vuln['line']}\n"
-        f"原始代码片段:\n{original[:1200]}\n\n"
-        f"规则补丁候选:\n{rule_diff[:1200]}\n"
-    )
-
-
 def build_graph_insight_prompt(
     vuln: dict[str, Any],
     cwe: str,
