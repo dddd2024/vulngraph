@@ -5,27 +5,30 @@ from typing import Any
 
 from llm.exceptions import LLMResponseFormatError
 
-PATCH_RESPONSE_KEYS = ("reason", "patch", "test")
+# 知识图谱分析响应键
+ANALYSIS_RESPONSE_KEYS = ("analysis", "impact_description", "mitigation_recommendation")
 
 
-def validate_patch_response(data: dict[str, Any]) -> dict[str, str]:
+def validate_analysis_response(data: dict[str, Any]) -> dict[str, str]:
+    """验证漏洞分析响应格式（非补丁生成）。"""
     if not isinstance(data, dict):
-        raise LLMResponseFormatError("LLM patch response must be a JSON object.")
+        raise LLMResponseFormatError("LLM analysis response must be a JSON object.")
 
     validated: dict[str, str] = {}
-    for key in PATCH_RESPONSE_KEYS:
+    for key in ANALYSIS_RESPONSE_KEYS:
         value = data.get(key)
-        if not isinstance(value, str):
+        if value is not None and not isinstance(value, str):
             raise LLMResponseFormatError(
-                f"LLM patch response missing required string field: {key}"
+                f"LLM analysis response field {key} must be a string."
             )
-        validated[key] = value
+        validated[key] = str(value) if value is not None else ""
     return validated
 
 
-def parse_patch_json(content: str) -> dict[str, str]:
+def parse_analysis_json(content: str) -> dict[str, str]:
+    """解析漏洞分析 JSON 响应。"""
     try:
         data = json.loads(content)
     except json.JSONDecodeError as exc:
-        raise LLMResponseFormatError("LLM patch response is not valid JSON.") from exc
-    return validate_patch_response(data)
+        raise LLMResponseFormatError("LLM analysis response is not valid JSON.") from exc
+    return validate_analysis_response(data)

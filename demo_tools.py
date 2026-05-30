@@ -45,10 +45,10 @@ def reset_demo_state(project_root: str) -> dict[str, Any]:
 
 def run_demo_tests(project_root: str) -> dict[str, Any]:
     root = Path(project_root).resolve()
-    # 运行 tests 目录下的所有测试
+    # 运行检测回归测试
     target = "tests"
     proc = subprocess.run(
-        [sys.executable, "-m", "pytest", target, "-q", "--ignore=tests/test_patch_generate_no_api_for_sql.py"],
+        [sys.executable, "-m", "pytest", target, "-q"],
         cwd=str(root),
         capture_output=True,
         text=True,
