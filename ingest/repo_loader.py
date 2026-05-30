@@ -1,13 +1,16 @@
 """
 Repository loader for loading code from various sources.
 
-Supports loading code snippets and local repositories.
+Supports loading code snippets, local repositories, and GitHub repositories.
 """
 
+import shutil
 from pathlib import Path
+from typing import Callable
 from audit_core.models import CodeUnit
 from ingest.code_unit_builder import build_code_unit_from_file, build_code_unit_from_snippet
 from ingest.language_router import is_supported_file
+from ingest.github_loader import GitHubLoader
 
 
 # Directories to ignore when scanning repositories
@@ -39,8 +42,27 @@ class RepoLoader:
     Supports:
     - Code snippets (direct code input)
     - Local repository paths
-    - GitHub repository URLs (TODO: placeholder for future implementation)
+    - GitHub repository URLs
     """
+    
+    def __init__(
+        self,
+        github_loader: GitHubLoader | None = None,
+        clone_func: Callable | None = None,
+        download_func: Callable | None = None
+    ):
+        """
+        Initialize the repo loader.
+        
+        Args:
+            github_loader: Optional GitHubLoader instance
+            clone_func: Optional function to use for cloning (for mocking)
+            download_func: Optional function to use for downloading (for mocking)
+        """
+        self._github_loader = github_loader or GitHubLoader(
+            clone_func=clone_func,
+            download_func=download_func
+        )
     
     def load_code_snippet(self, code: str, language_hint: str | None = None) -> list[CodeUnit]:
         """
@@ -90,21 +112,36 @@ class RepoLoader:
         
         return code_units
     
-    def load_github_repo(self, repo_url: str) -> list[CodeUnit]:
+    def load_github_repo(self, repo_url: str, branch: str | None = None) -> list[CodeUnit]:
         """
         Load a GitHub repository.
         
         Args:
             repo_url: GitHub repository URL
+            branch: Optional branch name
             
         Returns:
-            List of CodeUnits (currently returns empty list as placeholder)
+            List of CodeUnits for all supported files
             
-        TODO: Implement GitHub repository cloning and loading
+        Raises:
+            ValueError: If the URL is not a valid GitHub URL
+            RuntimeError: If loading fails
         """
-        # TODO: Implement GitHub repo loading
-        # For now, return empty list to avoid crashing
-        return []
+        repo_path, files = self._github_loader.load_repo(repo_url, branch)
+        
+        code_units = []
+        for file_path in files:
+            try:
+                unit = build_code_unit_from_file(file_path, root=repo_path)
+                code_units.append(unit)
+            except (UnicodeDecodeError, IOError):
+                # Skip files that can't be read as text
+                continue
+        
+        # Clean up temporary directory
+        self._github_loader.cleanup()
+        
+        return code_units
     
     def _scan_directory(self, root: Path) -> list[Path]:
         """
