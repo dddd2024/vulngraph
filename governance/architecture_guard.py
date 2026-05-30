@@ -16,6 +16,7 @@ Architecture Guard - 轻量级架构检查工具
 """
 
 import ast
+import re
 import sys
 import yaml
 from pathlib import Path
@@ -34,9 +35,23 @@ class ArchitectureGuard:
     def _load_boundaries_config(self) -> Dict[str, Any]:
         """从 module_boundaries.yaml 加载配置"""
         config_path = self.project_root / "governance" / "module_boundaries.yaml"
-        if config_path.exists():
+        if not config_path.exists():
+            violation = "governance/module_boundaries.yaml: 配置文件不存在"
+            self.violations.append(violation)
+            print(f"  ❌ {violation}")
+            return {}
+        
+        try:
             with open(config_path, "r", encoding="utf-8") as f:
                 return yaml.safe_load(f) or {}
+        except yaml.YAMLError as e:
+            violation = f"governance/module_boundaries.yaml: YAML 解析失败 - {e}"
+            self.violations.append(violation)
+            print(f"  ❌ {violation}")
+        except Exception as e:
+            violation = f"governance/module_boundaries.yaml: 加载失败 - {e}"
+            self.violations.append(violation)
+            print(f"  ❌ {violation}")
         return {}
     
     def check_all(self) -> bool:
@@ -191,20 +206,18 @@ class ArchitectureGuard:
             for py_file in api_routes.rglob("*.py"):
                 content = py_file.read_text()
                 
-                # 检查是否在 API 中实现了检测逻辑
+                # 检查是否在 API 中实现了检测逻辑（使用正则匹配）
                 suspicious_patterns = [
-                    ('if "SELECT" in', "SQL 注入检测模式"),
-                    ("if 'SELECT' in", "SQL 注入检测模式"),
-                    ('re.search.*SELECT', "SQL 注入检测模式"),
-                    ('"SQL Injection"', "硬编码漏洞类型"),
-                    ("'SQL Injection'", "硬编码漏洞类型"),
-                    ('re.compile.*SELECT', "SQL 注入检测模式"),
-                    ('re.findall.*password', "密码检测模式"),
-                    ('"password" in', "密码检测模式"),
+                    (r'if\s*["\']SELECT["\']\s+in', "SQL 注入检测模式"),
+                    (r're\.search\s*\([^)]*SELECT', "SQL 注入检测模式"),
+                    (r'["\']SQL Injection["\']', "硬编码漏洞类型"),
+                    (r're\.compile\s*\([^)]*SELECT', "SQL 注入检测模式"),
+                    (r're\.findall\s*\([^)]*password', "密码检测模式"),
+                    (r'["\']password["\']\s+in', "密码检测模式"),
                 ]
-                
+
                 for pattern, desc in suspicious_patterns:
-                    if pattern in content:
+                    if re.search(pattern, content, re.IGNORECASE):
                         violation = f"{py_file}: 在 API 中实现了检测规则 ({desc})"
                         self.violations.append(violation)
                         print(f"  ❌ {violation}")
