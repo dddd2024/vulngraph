@@ -4,7 +4,91 @@
 
 VulnPatch is a modular security audit platform that combines static analysis with LLM-powered reasoning to detect and analyze vulnerabilities in source code.
 
-## Architecture Diagram
+**Project Positioning**: 基于多 Agent 与程序分析的应用安全审计平台
+
+**Core Workflow**:
+```
+代码输入 → 项目解析 → 攻击面识别 → 静态分析/污点分析 → LLM Agent 漏洞假设 → 证据链 → Judge Agent 裁决 → 审计报告
+```
+
+---
+
+## Primary Entry Point (唯一正式入口)
+
+**`POST /scan`** is the **only official entry point** for the audit pipeline.
+
+All functionality must be implemented through this entry point:
+
+```
+api/routes/scan.py
+    ↓
+audit_core/orchestrator.py (AuditOrchestrator)
+    ↓
+ingest → analyzers → agents → evidence → knowledge/report
+    ↓
+AuditResult
+```
+
+### Mainline Flow
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         Primary Entry Point                                  │
+│                     POST /scan (api/routes/scan.py)                          │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                    AuditOrchestrator                                         │
+│              (audit_core/orchestrator.py)                                    │
+│  - Coordinates the entire audit workflow                                     │
+│  - Manages data flow between components                                      │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                    │
+          ┌─────────────────────────┼─────────────────────────┐
+          │                         │                         │
+          ▼                         ▼                         ▼
+┌──────────────┐        ┌──────────────┐        ┌──────────────┐
+│    ingest    │        │   analyzers  │        │    agents    │
+│              │        │              │        │              │
+│ Code loading │        │ Pattern      │        │ ReconAgent   │
+│ Language     │        │ AST          │        │ AnalysisAgent│
+│ detection    │        │ Taint        │        │ JudgeAgent   │
+└──────────────┘        └──────────────┘        └──────────────┘
+          │                         │                         │
+          └─────────────────────────┼─────────────────────────┘
+                                    │
+                                    ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         evidence                                             │
+│  - Snippet extraction                                                        │
+│  - Call chain construction                                                   │
+│  - Confidence ledger                                                         │
+│  - Evidence bundle assembly                                                  │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                       knowledge / report                                     │
+│  - CWE classification                                                        │
+│  - RAG retrieval                                                             │
+│  - Vulnerability graph                                                       │
+│  - Report generation (JSON/Markdown/HTML)                                    │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         AuditResult                                          │
+│  - summary: Audit statistics                                                 │
+│  - findings: List of RawFinding                                              │
+│  - evidence: List of EvidenceBundle                                          │
+│  - agent_logs: Execution trace                                               │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Architecture Diagram (Full)
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
@@ -13,12 +97,12 @@ VulnPatch is a modular security audit platform that combines static analysis wit
 │                                                                              │
 │  ┌─────────────────────────────────────────────────────────────────────┐   │
 │  │                         API Layer                                    │   │
-│  │  ┌──────────┐  ┌──────────┐  ┌───────────┐  ┌───────────┐  ┌──────────┐ │   │
-│  │  │ POST     │  │ GET      │  │ GET       │  │ GET       │  │ Legacy   │ │   │
-│  │  │ /scan    │  │ /health  │  │ /findings │  │ /report   │  │ routes   │ │   │
-│  │  │ (primary)│  │          │  │ /evidence  │  │ /agents   │  │          │ │   │
-│  │  └──────────┘  └──────────┘  │ /logs     │  │ /json     │  └──────────┘ │   │
-│  │                              └───────────┘  └───────────┘               │   │
+│  │  ┌──────────┐  ┌──────────┐  ┌───────────┐  ┌───────────┐          │   │
+│  │  │ POST     │  │ GET      │  │ GET       │  │ GET       │          │   │
+│  │  │ /scan    │  │ /health  │  │ /findings │  │ /report   │          │   │
+│  │  │ (primary)│  │          │  │ /evidence │  │ /agents   │          │   │
+│  │  └──────────┘  └──────────┘  │ /logs     │  │ /json     │          │   │
+│  │                              └───────────┘  └───────────┘            │   │
 │  └─────────────────────────────────────────────────────────────────────┘   │
 │                                    │                                         │
 │                                    ▼                                         │
@@ -60,6 +144,7 @@ VulnPatch is a modular security audit platform that combines static analysis wit
 │  ┌─────────────────────────────────────────────────────────────────────┐   │
 │  │                        report                                        │   │
 │  │  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────────────┐ │   │
+│  │  │ JSON        │  ┌─────────────┐  ┌─────────────────────────────┐ │   │
 │  │  │ JSON        │  │ Markdown    │  │ HTML                        │ │   │
 │  │  └─────────────┘  └─────────────┘  └─────────────────────────────┘ │   │
 │  └─────────────────────────────────────────────────────────────────────┘   │
@@ -67,12 +152,17 @@ VulnPatch is a modular security audit platform that combines static analysis wit
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
+---
+
 ## Data Flow
 
+### Audit Pipeline
 ```
 Input → ingest → CodeUnit → analyzers → RawFinding → merge → agents → 
 EvidenceBundle → knowledge → report → AuditResult
 ```
+
+---
 
 ## Core Components
 
@@ -100,9 +190,12 @@ Static analysis engines.
 
 - **base.py**: Base analyzer interface
 - **pattern_analyzer.py**: Regex-based detection
-- **ast_analyzer.py**: AST-based detection (skeleton)
-- **taint/**: Taint analysis engine (skeleton)
+- **ast_analyzer.py**: AST-based detection
+- **taint/**: Taint analysis engine
 - **legacy_adapter.py**: Legacy detector integration
+- **javascript/**: JavaScript/TypeScript analyzers
+- **java/**: Java analyzers
+- **c_cpp/**: C/C++ analyzers
 
 ### agents
 
@@ -128,9 +221,8 @@ Evidence collection and management.
 Knowledge base and classification.
 
 - **cwe_mapper.py**: CWE classification
-- **rag_retriever.py**: RAG retrieval (skeleton)
-- **vuln_graph.py**: Vulnerability graph (skeleton)
-- **legacy_graph_adapter.py**: Legacy graph integration
+- **rag_retriever.py**: RAG retrieval
+- **vuln_graph.py**: Vulnerability graph
 
 ### report
 
@@ -145,20 +237,23 @@ Report generation.
 FastAPI routes and schemas.
 
 - **schemas.py**: Pydantic request/response models
-- **routes/scan.py**: New scan endpoint
-- **routes/legacy.py**: Backward compatibility
+- **routes/scan.py**: Primary scan endpoint
 - **routes/findings.py**: Findings endpoint
 - **routes/evidence.py**: Evidence endpoint
 - **routes/agents.py**: Agent logs endpoint
 - **routes/report.py**: Report generation endpoints
 
+---
+
 ## Key Design Principles
 
-1. **Separation of Concerns**: Analyzers do static analysis, Agents do LLM reasoning
-2. **Unified Data Models**: All components use standardized Pydantic models
-3. **Extensibility**: New analyzers and agents can be added via registry
-4. **Backward Compatibility**: Legacy API endpoints are preserved
-5. **No LLM Calls in Stage 1**: Agents use placeholder logic initially
+1. **Single Entry Point**: All functionality must use `/scan` + `AuditOrchestrator`
+2. **Separation of Concerns**: Analyzers do static analysis, Agents do LLM reasoning
+3. **Unified Data Models**: All components use standardized Pydantic models
+4. **Extensibility**: New analyzers and agents can be added via registry
+5. **Multi-Language Support**: Independent analyzers for Python, JavaScript, Java, C/C++
+
+---
 
 ## Usage
 
@@ -185,7 +280,7 @@ result = orchestrator.scan(
 
 ### API Endpoints
 
-**Primary (new architecture):**
+**Primary endpoints**:
 - `POST /scan` - Primary scan endpoint (delegates to AuditOrchestrator)
 - `GET /findings` - Findings from most recent scan
 - `GET /evidence` - Evidence bundles from most recent scan
@@ -195,13 +290,7 @@ result = orchestrator.scan(
 - `GET /report/html` - Audit report as HTML
 - `GET /health` - Health check
 
-**Legacy (backward compatible):**
-- `POST /analyze-input` - Old scan interface
-- `POST /analyze-input-async` - Old async scan
-- `GET /jobs/{job_id}` - Async job status
-- `POST /analyze` - Full pipeline run
-- `GET /graph` - Call graph
-- `POST /knowledge-graph` - Knowledge graph
+---
 
 ## Future Work
 
@@ -211,6 +300,5 @@ result = orchestrator.scan(
 - [ ] Implement GitHub repository scanning
 - [ ] Add RAG-based knowledge retrieval
 - [ ] Build vulnerability knowledge graph
-- [ ] Integrate with legacy graph module
 - [ ] Add more vulnerability patterns
-- [ ] Implement multi-language support
+- [ ] Enhance multi-language support

@@ -1,18 +1,33 @@
+"""
+Exceptions for LLM client operations.
+"""
+
+
 class LLMError(Exception):
-    """Base exception for LLM client failures."""
+    """Base exception for LLM-related errors."""
+    pass
 
 
 class LLMConfigError(LLMError):
-    """Raised when LLM configuration is missing or invalid."""
+    """Error in LLM client configuration."""
+    pass
 
 
 class LLMConnectionError(LLMError):
-    """Raised when an LLM endpoint cannot be reached."""
+    """Error connecting to LLM API."""
+    pass
 
 
-class LLMTimeoutError(LLMConnectionError):
-    """Raised when an LLM request times out."""
+class LLMTimeoutError(LLMError):
+    """Timeout waiting for LLM response."""
+    pass
 
 
-class LLMResponseFormatError(LLMError):
-    """Raised when an LLM response does not match the expected schema."""
+class LLMRateLimitError(LLMError):
+    """Rate limit exceeded."""
+    pass
+
+
+class LLMResponseError(LLMError):
+    """Error in LLM response."""
+    pass

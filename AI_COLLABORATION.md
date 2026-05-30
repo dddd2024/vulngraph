@@ -41,6 +41,8 @@ cat TASKS/<your_module>_task.md
 - 不要修改 audit_core/models.py
 - 输出必须符合 RawFinding 模型
 - 遵守 analyzers/AGENTS.md 中的规范
+- 不要基于 main.py、analysis_engine.py、api/routes/legacy.py 开发
+- 新功能必须通过 AuditOrchestrator 接入 /scan 入口
 
 【测试要求】
 - 运行 python governance/architecture_guard.py
@@ -255,8 +257,10 @@ A:
 
 A:
 1. 在 Prompt 中明确指定模块边界
-2. 使用架构守卫检查
-3. 审查生成的代码
+2. 明确禁止基于旧入口开发（main.py, analysis_engine.py, legacy.py）
+3. 强调新功能必须通过 AuditOrchestrator 接入
+4. 使用架构守卫检查
+5. 审查生成的代码
 
 ### Q: 测试不通过但代码看起来没问题？
 

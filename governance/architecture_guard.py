@@ -64,6 +64,8 @@ class ArchitectureGuard:
             ("禁止的跨模块导入", self.check_forbidden_imports),
             ("/scan 返回字段", self.check_scan_response),
             ("模块边界合规性", self.check_module_boundaries),
+            ("旧入口使用检查", self.check_legacy_entry_points),
+            ("patch 引用检查", self.check_patch_references),
         ]
         
         all_passed = True
@@ -105,6 +107,9 @@ class ArchitectureGuard:
                 
             for py_file in module_path.rglob("*.py"):
                 if py_file.name == "__init__.py":
+                    continue
+                # 排除 legacy.py（向后兼容）
+                if py_file.name == "legacy.py":
                     continue
                     
                 imports = self._extract_imports(py_file)
@@ -254,6 +259,92 @@ class ArchitectureGuard:
         
         if passed:
             print("  ✅ 模块边界合规")
+        
+        return passed
+    
+    def check_legacy_entry_points(self) -> bool:
+        """检查新代码是否错误地使用了旧入口"""
+        passed = True
+        
+        # 检查 api/routes/ 中是否导入 analysis_engine 或 main
+        api_routes_dir = self.project_root / "api" / "routes"
+        if api_routes_dir.exists():
+            for py_file in api_routes_dir.rglob("*.py"):
+                if py_file.name == "__init__.py":
+                    continue
+                if py_file.name == "legacy.py":
+                    # legacy.py 允许导入旧模块（向后兼容）
+                    continue
+                    
+                content = py_file.read_text()
+                imports = self._extract_imports(py_file)
+                
+                # 检查是否导入旧入口
+                forbidden_imports = ["analysis_engine", "main", "detector", "parser"]
+                for imp in imports:
+                    for forbidden in forbidden_imports:
+                        if imp == forbidden or imp.startswith(f"{ forbidden }."):
+                            violation = f"{py_file}: 新 API 路由禁止导入旧入口 '{imp}'"
+                            self.violations.append(violation)
+                            print(f"  ❌ {violation}")
+                            passed = False
+        
+        # 检查 analyzers/ 是否导入旧 detector pipeline
+        analyzers_dir = self.project_root / "analyzers"
+        if analyzers_dir.exists():
+            for py_file in analyzers_dir.rglob("*.py"):
+                if py_file.name == "__init__.py":
+                    continue
+                if py_file.name == "legacy_adapter.py":
+                    # legacy_adapter.py 允许导入 detector（适配器）
+                    continue
+                    
+                content = py_file.read_text()
+                imports = self._extract_imports(py_file)
+                
+                for imp in imports:
+                    if imp.startswith("detector"):
+                        violation = f"{py_file}: 新代码禁止导入旧 detector pipeline '{imp}'"
+                        self.violations.append(violation)
+                        print(f"  ❌ {violation}")
+                        passed = False
+        
+        if passed:
+            print("  ✅ 未发现错误使用旧入口")
+        
+        return passed
+    
+    def check_patch_references(self) -> bool:
+        """检查是否新增 patch 相关引用"""
+        passed = True
+        
+        # 检查各模块是否导入 patch
+        modules_to_check = ["analyzers", "agents", "evidence", "report", "api"]
+        patch_patterns = ["patch", "patch_generator", "apply_patch", "generate_patch"]
+        
+        for module_name in modules_to_check:
+            module_dir = self.project_root / module_name
+            if not module_dir.exists():
+                continue
+                
+            for py_file in module_dir.rglob("*.py"):
+                if py_file.name == "__init__.py":
+                    continue
+                    
+                content = py_file.read_text()
+                imports = self._extract_imports(py_file)
+                
+                # 检查导入
+                for imp in imports:
+                    for pattern in patch_patterns:
+                        if pattern in imp.lower():
+                            violation = f"{py_file}: 禁止导入 patch 相关模块 '{imp}'"
+                            self.violations.append(violation)
+                            print(f"  ❌ {violation}")
+                            passed = False
+        
+        if passed:
+            print("  ✅ 未发现新增 patch 引用")
         
         return passed
     

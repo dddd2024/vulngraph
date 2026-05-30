@@ -18,9 +18,9 @@ from fastapi import FastAPI
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from api.routes import agents, evidence, findings, legacy, report, scan
+from api.routes import agents, evidence, findings, report, scan
 
-app = FastAPI(title="VulnPatch - Vulnerability Detection System")
+app = FastAPI(title="VulnPatch - Security Audit Platform")
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -37,7 +37,6 @@ app.include_router(findings.router)   # GET  /findings
 app.include_router(evidence.router)   # GET  /evidence
 app.include_router(agents.router)     # GET  /agents/logs
 app.include_router(report.router)     # GET  /report/json
-app.include_router(legacy.router)     # /analyze-input, /graph, /knowledge-graph, etc.
 
 # ---------------------------------------------------------------------------
 # Root-level routes (minimal)

@@ -31,7 +31,7 @@ def reset_demo_state(project_root: str) -> dict[str, Any]:
     root = Path(project_root).resolve()
     removed: list[str] = []
 
-    for rel in ["pipeline_result.json", "users.db"]:
+    for rel in ["users.db"]:
         path = root / rel
         if path.exists():
             path.unlink()

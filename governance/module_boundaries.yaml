@@ -271,13 +271,26 @@ forbidden_imports:
   analyzers:
     - agents
     - llm
+    - patch  # 禁止导入 patch 模块
   
   agents:
     - ingest.repo_loader  # 不能直接扫描
+    - patch  # 禁止导入 patch 模块
+  
+  evidence:
+    - patch  # 禁止导入 patch 模块
+  
+  report:
+    - patch  # 禁止导入 patch 模块
   
   api:
     - analyzers.pattern_analyzer  # 不能直接调用
     - agents.analysis_agent  # 不能直接调用
+    - analysis_engine  # 禁止导入旧分析引擎
+    - main  # 禁止导入旧 pipeline 入口
+    - patch  # 禁止导入 patch 模块
+    - detector  # 禁止导入旧 detector pipeline
+    - parser  # 禁止导入旧 parser
 
 # 数据流向
 data_flow:

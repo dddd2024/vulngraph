@@ -57,6 +57,9 @@ EvidenceBundle → knowledge → report → AuditResult
 4. **禁止** `api/` 包含漏洞检测规则实现
 5. **禁止** 修改 `audit_core/models.py` 中的字段定义
 6. **禁止** 删除或修改 `/scan` 返回的必需字段
+7. **禁止** 基于 `main.py`、`analysis_engine.py`、`api/routes/legacy.py` 开发新功能
+8. **禁止** 新代码导入 `analysis_engine` 或 `main` 模块
+9. **禁止** 新功能接入旧 `detector/` pipeline
 
 ### 阶段限制（第一阶段）
 1. **不要** 实现新的漏洞检测能力（保持现有 PatternAnalyzer 即可）
@@ -64,6 +67,14 @@ EvidenceBundle → knowledge → report → AuditResult
 3. **不要** 实现完整 Agent LLM 调用（保持占位逻辑）
 4. **不要** 修改前端功能
 5. **不要** 修改 UI 相关代码
+
+### 旧入口限制
+以下文件已标记为**待移除**，新功能不得接入：
+- `main.py` - 旧 pipeline 入口，使用 detector/ 和 parser/ 直接扫描
+- `analysis_engine.py` - 旧输入分析入口，直接调用 detector 和 parser
+- `api/routes/legacy.py` - 旧 API 路由，仅保留向后兼容
+
+**所有新功能必须通过 `AuditOrchestrator` 接入 `/scan` 入口。**
 
 ---
 

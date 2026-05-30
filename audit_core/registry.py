@@ -11,6 +11,9 @@ from analyzers.pattern_analyzer import PatternAnalyzer
 from analyzers.ast_analyzer import ASTAnalyzer
 from analyzers.taint.taint_engine import TaintAnalyzer
 from analyzers.legacy_adapter import LegacyAnalyzerAdapter
+from analyzers.javascript.js_pattern_analyzer import JSPatternAnalyzer
+from analyzers.java.java_pattern_analyzer import JavaPatternAnalyzer
+from analyzers.c_cpp.c_pattern_analyzer import CPatternAnalyzer
 
 
 class AnalyzerRegistry:
@@ -88,11 +91,16 @@ def build_default_registry() -> AnalyzerRegistry:
     Build a registry with default analyzers.
     
     Returns:
-        Registry with pattern, AST, and taint analyzers registered
+        Registry with pattern, AST, taint, legacy, and language-specific analyzers registered
     """
     registry = AnalyzerRegistry()
+    # Core analyzers (Python-focused)
     registry.register(PatternAnalyzer())
     registry.register(ASTAnalyzer())
     registry.register(TaintAnalyzer())
     registry.register(LegacyAnalyzerAdapter())
+    # Language-specific analyzers
+    registry.register(JSPatternAnalyzer())
+    registry.register(JavaPatternAnalyzer())
+    registry.register(CPatternAnalyzer())
     return registry
