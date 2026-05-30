@@ -29,6 +29,9 @@
     findingDetail: document.getElementById("findingDetail"),
     graphBtn: document.getElementById("graphBtn"),
     kgBtn: document.getElementById("kgBtn"),
+    kgAiMode: document.getElementById("kgAiMode"),
+    kgModelName: document.getElementById("kgModelName"),
+    kgApiKey: document.getElementById("kgApiKey"),
     graphOut: document.getElementById("graphOut"),
     rawOut: document.getElementById("rawOut"),
     copyJsonBtn: document.getElementById("copyJsonBtn")
@@ -50,7 +53,7 @@
       titleFindings: "漏洞发现", titleDetail: "漏洞详情", titleAdvanced: "高级分析", titleRaw: "高级原始 JSON",
       kpiFindings: "漏洞数量", kpiMaxRisk: "最大风险", kpiCritical: "高危问题", kpiEngine: "引擎", kpiSkipped: "跳过文件",
       segCode: "代码片段", segGithub: "GitHub 仓库",
-      analyzeBtn: "开始分析", resetBtn: "重置演示项目", testsBtn: "运行演示测试",
+      analyzeBtn: "开始分析", resetBtn: "重置演示项目", testsBtn: "运行检测回归测试",
       copyJson: "复制 JSON",
       stepPrepare: "准备", stepDetect: "检测", stepReport: "报告", stepDone: "完成",
       ready: "就绪", none: "无", online: "在线", offline: "离线", idle: "空闲"
@@ -63,7 +66,7 @@
       titleFindings: "Findings", titleDetail: "Finding Detail", titleAdvanced: "Advanced Analysis", titleRaw: "Advanced Raw JSON",
       kpiFindings: "Findings", kpiMaxRisk: "Max Risk", kpiCritical: "Critical Issues", kpiEngine: "Engine", kpiSkipped: "Skipped Files",
       segCode: "Code Snippet", segGithub: "GitHub Repository",
-      analyzeBtn: "Start Analyze", resetBtn: "Reset Demo", testsBtn: "Run Demo Tests",
+      analyzeBtn: "Start Analyze", resetBtn: "Reset Demo", testsBtn: "Run Detection Regression Tests",
       copyJson: "Copy JSON",
       stepPrepare: "Prepare", stepDetect: "Detect", stepReport: "Report", stepDone: "Done",
       ready: "ready", none: "none", online: "online", offline: "offline", idle: "idle"
@@ -568,12 +571,18 @@
       els.graphOut.textContent = "请先完成一次漏洞分析，再查看知识图谱。";
       return;
     }
+    const aiMode = els.kgAiMode ? els.kgAiMode.value : "rule";
+    const modelName = els.kgModelName ? els.kgModelName.value.trim() : "";
+    const apiKey = els.kgApiKey ? els.kgApiKey.value.trim() : "";
+    const payload = {
+      vulnerabilities: lastAnalysisResult.vulnerabilities,
+      ai_mode: aiMode,
+      sync_neo4j: true
+    };
+    if (modelName) payload.model_name = modelName;
+    if (apiKey) payload.api_key = apiKey;
     try {
-      const data = await call("/knowledge-graph", "POST", {
-        vulnerabilities: lastAnalysisResult.vulnerabilities,
-        ai_mode: "rule",
-        sync_neo4j: true
-      });
+      const data = await call("/knowledge-graph", "POST", payload);
       renderKnowledgeGraph(data.graph || data);
       setRawJson(data);
     } catch (e) {

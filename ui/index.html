@@ -85,7 +85,7 @@
         <div class="actions">
           <button id="analyzeInputBtn" class="btn btn-primary">开始分析</button>
           <button id="resetBtn" class="btn">重置演示项目</button>
-          <button id="testsBtn" class="btn">运行演示测试</button>
+          <button id="testsBtn" class="btn">运行检测回归测试</button>
         </div>
       </section>
 
@@ -127,6 +127,24 @@
 
       <section id="graph" class="card">
         <h2 id="titleAdvanced">Advanced Analysis</h2>
+        <div class="form-grid" style="margin-bottom: 12px;">
+          <div style="width: 140px;">
+            <label for="kgAiMode">知识图谱 AI 模式</label>
+            <select id="kgAiMode">
+              <option value="rule">Rule</option>
+              <option value="cloud">Cloud</option>
+              <option value="local">Local</option>
+            </select>
+          </div>
+          <div style="flex: 1;">
+            <label for="kgModelName">模型名称（可选）</label>
+            <input id="kgModelName" placeholder="留空使用默认模型">
+          </div>
+          <div style="flex: 1;">
+            <label for="kgApiKey">API Key（可选）</label>
+            <input id="kgApiKey" type="password" placeholder="留空使用 .env 配置">
+          </div>
+        </div>
         <div class="actions">
           <button id="graphBtn" class="btn">查看调用图</button>
           <button id="kgBtn" class="btn">查看漏洞知识图谱</button>

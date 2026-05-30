@@ -31,18 +31,20 @@ def run_pipeline(project_root: str = ".") -> dict[str, Any]:
     # 3. 检测所有漏洞
     findings = detect_all(str(root / "repo"))
 
-    if not findings:
-        raise RuntimeError("No vulnerabilities detected.")
-
-    # 4. 查找受影响的模块
-    target = next((f for f in findings if f["type"] == "SQL Injection"), findings[0])
-    impact = find_impacted_modules(graph, target.get("symbol", "search_user"))
+    # 4. 查找受影响的模块（仅在有漏洞时）
+    target = None
+    impact: list[dict[str, Any]] = []
+    if findings:
+        target = next(
+            (f for f in findings if f["type"] == "SQL Injection"), findings[0]
+        )
+        impact = find_impacted_modules(graph, target.get("symbol", "search_user"))
 
     # 5. 导出调用图边数据
     graph_edges = export_edges(graph)
 
     # 6. 构建检测结果
-    result = {
+    result: dict[str, Any] = {
         "report_mode": "detect-only",
         "target": target,
         "impact": impact,
@@ -50,6 +52,9 @@ def run_pipeline(project_root: str = ".") -> dict[str, Any]:
         "findings": findings,
         "scanned_files": len(files) if files else 0,
     }
+
+    if not findings:
+        result["message"] = "No vulnerabilities detected."
 
     # 7. 保存结果到 JSON 文件
     (root / "pipeline_result.json").write_text(

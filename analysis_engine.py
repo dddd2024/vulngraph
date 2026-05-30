@@ -408,7 +408,18 @@ def _build_display(
     }
 
 
-def _build_finding_output(vuln: dict[str, Any]) -> dict[str, Any]:
+def _normalize_file_path(file_path: str | Path, root: Path) -> str:
+    """将文件路径规范化为相对于 root 的相对路径，统一使用正斜杠."""
+    p = Path(file_path)
+    try:
+        rel = p.relative_to(root)
+    except ValueError:
+        # 路径不在 root 下，直接返回文件名
+        rel = Path(p.name)
+    return str(rel).replace("\\", "/")
+
+
+def _build_finding_output(vuln: dict[str, Any], root: Path | None = None) -> dict[str, Any]:
     """构建漏洞检测结果输出（不含补丁相关字段）"""
     taxonomy = {
         "SQL Injection": {"cwe": "CWE-89", "confidence": "high"},
@@ -438,11 +449,17 @@ def _build_finding_output(vuln: dict[str, Any]) -> dict[str, Any]:
         "Hardcoded Credentials": {"cwe": "CWE-798", "confidence": "medium"},
     }
     meta = taxonomy.get(vuln["type"], {"cwe": "CWE-Other", "confidence": "low"})
+
+    # 优先使用检测器原始值，taxonomy 仅作为默认值
+    cwe = vuln.get("cwe") or meta["cwe"]
+    confidence = vuln.get("confidence") or meta["confidence"]
+    message = vuln.get("message") or vuln.get("detail") or ""
+
     severity = vuln.get("severity", "ERROR")
     score_base = 90 if severity == "ERROR" else 70
-    if meta["confidence"] == "medium":
+    if confidence == "medium":
         score_base -= 15
-    if meta["confidence"] == "low":
+    if confidence == "low":
         score_base -= 30
     if len(vuln.get("engines", [])) > 1:
         score_base += 5
@@ -452,17 +469,27 @@ def _build_finding_output(vuln: dict[str, Any]) -> dict[str, Any]:
         engine = vuln.get("engine", "ast")
         engines = [engine]
 
-    finding_output = {
+    # 路径规范化：将绝对路径转为相对路径
+    raw_file = vuln.get("file", "")
+    if root and raw_file:
+        file_display = _normalize_file_path(raw_file, root)
+    else:
+        file_display = str(raw_file).replace("\\", "/")
+
+    finding_output: dict[str, Any] = {
         "type": vuln["type"],
         "severity": severity,
-        "cwe": meta["cwe"],
-        "confidence": meta["confidence"],
+        "cwe": cwe,
+        "confidence": confidence,
         "risk_score": max(0, min(score_base, 100)),
         "engines": engines,
-        "file": vuln.get("file", ""),
+        "file": file_display,
         "line": vuln.get("line", 0),
         "language": vuln.get("language", "Python"),
     }
+    # 保留检测器原始 message
+    if message:
+        finding_output["message"] = message
     # 保留 metadata 字段（包含污点追踪信息）
     if "metadata" in vuln:
         finding_output["metadata"] = vuln["metadata"]
@@ -507,7 +534,7 @@ def _analyze_repo(repo_root: Path) -> dict[str, Any]:
         scanned_files.append(file_record)
 
     findings = _dedup_findings(findings)
-    out_findings = [_build_finding_output(v) for v in findings]
+    out_findings = [_build_finding_output(v, root=repo_root) for v in findings]
     skipped_files = []
     for item in skipped_details:
         file_name = item["file"]
