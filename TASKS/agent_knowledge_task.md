@@ -79,8 +79,9 @@ Agent & Knowledge 模块产出以下结构化对象：
 - 记录失败日志到 `AgentLog`
 
 ### 5. 必须通过 AuditOrchestrator 接入主流程
-- 新增的 Agent 必须注册到 `agents/orchestrator_agent.py`
+- 新增 Agent 必须通过 `AuditOrchestrator` 或 `AgentRuntime` 接入主流程
 - 不得绕过 `AuditOrchestrator` 直接被 API 调用
+- `OrchestratorAgent` 仅作为未来可选的 LLM 策略协调 Agent，不承担当前工程主流程调度
 - 遵循 `ingest -> analyzers -> agents -> evidence -> knowledge -> report` 数据流
 
 ## 预期输出
@@ -128,7 +129,7 @@ print(f'Evidence: {len(result.evidence)}')
 - [ ] 我没有直接读取文件系统
 - [ ] 我没有修改 `audit_core/models.py`
 - [ ] LLM 调用包含 try/except 和 fallback 逻辑
-- [ ] 新 Agent 已注册到 `orchestrator_agent.py`
+- [ ] 新 Agent 已通过 `AuditOrchestrator` 或 `AgentRuntime` 接入主流程
 - [ ] 所有输出对象符合 Pydantic 模型定义
 - [ ] 所有单元测试通过
 - [ ] 架构守卫检查通过
@@ -148,7 +149,7 @@ print(f'Evidence: {len(result.evidence)}')
 - Agent 不允许直接读取文件系统，只能通过 CodeUnit 等结构化对象获取输入
 - Agent 不允许直接调用 analyzers，分析结果由 AuditOrchestrator 提供
 - LLM 调用必须包含 try/except 和 fallback 逻辑
-- 新增的 Agent 必须注册到 agents/orchestrator_agent.py
+- 新增 Agent 必须通过 AuditOrchestrator 或后续 AgentRuntime 接入主流程；OrchestratorAgent 仅作为未来可选的 LLM 策略协调 Agent，不承担当前工程主流程调度
 - 新功能必须通过 AuditOrchestrator 接入主流程
 - 不要基于 main.py、analysis_engine.py、api/routes/legacy.py 开发
 

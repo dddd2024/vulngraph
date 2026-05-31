@@ -4,16 +4,21 @@
 
 VulnPatch 是一个模块化安全审计平台，结合静态分析与 LLM 推理能力检测源代码漏洞。
 
-**当前阶段**: Stage 1.5 AI 协作治理层
+**当前阶段**: Stage 2 Ready（架构治理增强完成，准备进入模块能力填充）
 
 **核心目标**: 建立 AI 协作治理机制，确保四位成员在并行开发时遵守架构边界和契约。
 
-**阶段限制**:
-- 不要新增检测能力（保持现有 PatternAnalyzer 即可）
-- 不要实现完整污点流（taint/ 目录保持骨架）
-- 不要接入真实 LLM（agents/ 保持占位逻辑）
-- 不要修改前端功能
-- 后续 Stage 2 才允许按模块任务模板新增功能
+**已完成治理增强**:
+- ✅ 四人任务模板补齐（TASKS/*.md）
+- ✅ Analyzer Registry 插件化（支持按语言路由）
+- ✅ Agent 强类型接口（BaseAgent + AgentRuntime 错误隔离）
+- ✅ /scan session 化（支持多扫描隔离）
+- ✅ 模块化测试目录（tests/test_<module>/）
+
+**阶段说明**:
+- 可以按四人任务模板进入模块能力填充
+- 各模块负责人可按 TASKS/*.md 推进功能实现
+- 保持架构边界和公共契约稳定
 
 ---
 
@@ -61,12 +66,10 @@ EvidenceBundle → knowledge → report → AuditResult
 8. **禁止** 新代码导入 `analysis_engine` 或 `main` 模块
 9. **禁止** 导入已删除的 `detector/` 模块
 
-### 阶段限制（第一阶段）
-1. **不要** 实现新的漏洞检测能力（保持现有 PatternAnalyzer 即可）
-2. **不要** 实现完整污点流（taint/ 目录保持骨架）
-3. **不要** 实现完整 Agent LLM 调用（保持占位逻辑）
-4. **不要** 修改前端功能
-5. **不要** 修改 UI 相关代码
+### 必须遵守
+1. **必须** 通过 `AuditOrchestrator` 接入主流程
+2. **必须** 遵守模块边界（见四人分工）
+3. **必须** 运行测试后提交
 
 ### 旧入口限制
 以下文件已标记为**待移除**，新功能不得接入：
@@ -75,6 +78,48 @@ EvidenceBundle → knowledge → report → AuditResult
 - `api/routes/legacy.py` - 旧 API 路由，仅保留向后兼容
 
 **所有新功能必须通过 `AuditOrchestrator` 接入 `/scan` 入口。**
+
+---
+
+## AuditOrchestrator vs OrchestratorAgent
+
+### 明确区分
+
+| 组件 | 类型 | 职责 | 当前状态 |
+|------|------|------|----------|
+| **AuditOrchestrator** | 确定性工程编排器 | 扫描主流程、模块调度、错误恢复 | ✅ 已实现，主流程入口 |
+| **OrchestratorAgent** | 可选 LLM 策略协调 Agent | 多 Agent 推理规划、动态策略 | 📝 未来可选，占位状态 |
+
+### AuditOrchestrator（当前主流程）
+
+- **位置**: `audit_core/orchestrator.py`
+- **性质**: 确定性工程编排器，不直接依赖 LLM
+- **职责**:
+  - 协调整个审计工作流
+  - 管理模块间数据流
+  - 实现错误隔离和恢复（AgentRuntime）
+  - 按语言路由 analyzer
+- **接入方式**: 所有功能通过 `AuditOrchestrator` 接入 `/scan`
+
+### OrchestratorAgent（未来可选）
+
+- **位置**: `agents/orchestrator_agent.py`
+- **性质**: 可选 LLM 策略协调 Agent
+- **职责**（未来）:
+  - 多 Agent 推理规划
+  - 动态策略协调
+  - 不直接控制 API
+  - 不直接调用 analyzer
+  - **不替代** AuditOrchestrator
+- **当前状态**: 占位实现，不承担主流程调度
+
+### Agent 接入方式
+
+新增 Agent 必须通过以下方式接入主流程：
+1. **通过 AuditOrchestrator**: 修改 `audit_core/orchestrator.py` 调用新 Agent
+2. **通过 AgentRuntime**: 使用 `audit_core/agent_runtime.py` 的错误隔离机制
+
+**不要**将 Agent 注册到 `agents/orchestrator_agent.py` 作为当前主流程的接入方式。
 
 ---
 
@@ -188,6 +233,10 @@ EvidenceBundle → knowledge → report → AuditResult
 - 直接读取文件系统（使用 CodeUnit）
 - 修改 `audit_core/models.py`
 - 修改 Analyzers
+
+**Agent 接入方式**:
+- 新增 Agent 通过 `AuditOrchestrator` 或 `AgentRuntime` 接入主流程
+- `OrchestratorAgent` 仅作为未来可选的 LLM 策略协调 Agent，不承担当前工程主流程调度
 
 ### 成员 4: API, UI & Report
 
@@ -340,7 +389,7 @@ python -m pytest tests/contracts/ -v
 python governance/architecture_guard.py
 
 # 运行特定模块测试
-python -m pytest tests/test_analyzers.py -v
+python -m pytest tests/test_<module>.py -v
 
 # 运行端到端测试
 python -c "from audit_core.orchestrator import AuditOrchestrator; o = AuditOrchestrator(); print(o.scan_code('def test(): pass', 'python'))"
@@ -354,5 +403,5 @@ python -c "from audit_core.orchestrator import AuditOrchestrator; o = AuditOrche
 
 ---
 
-*最后更新: 2026-05-30*
-*版本: v1.0*
+*最后更新: 2026-05-31*
+*版本: v1.1 - Stage 2 Ready*

@@ -171,10 +171,32 @@ EvidenceBundle → knowledge → report → AuditResult
 Central data models and orchestration logic.
 
 - **models.py**: Pydantic models for all data types
-- **orchestrator.py**: Main audit workflow orchestrator
+- **orchestrator.py**: Main audit workflow orchestrator (AuditOrchestrator)
 - **registry.py**: Analyzer registration and discovery
 - **result_merger.py**: Finding deduplication
 - **scoring.py**: Risk score calculation
+- **agent_runtime.py**: Agent execution with error isolation
+- **error_policy.py**: Fallback strategies for Agent failures
+
+#### AuditOrchestrator vs OrchestratorAgent
+
+**AuditOrchestrator** (`audit_core/orchestrator.py`):
+- **性质**: 确定性工程编排器，不直接依赖 LLM
+- **职责**: 扫描主流程、模块调度、错误恢复、analyzer 语言路由
+- **当前状态**: ✅ 已实现，是唯一的工程主流程入口
+- **接入方式**: 所有功能通过 `AuditOrchestrator` 接入 `/scan`
+
+**OrchestratorAgent** (`agents/orchestrator_agent.py`):
+- **性质**: 可选 LLM 策略协调 Agent
+- **职责**（未来）: 多 Agent 推理规划、动态策略协调
+- **当前状态**: 📝 占位实现，不承担主流程调度
+- **限制**: 不直接控制 API、不直接调用 analyzer、不替代 AuditOrchestrator
+
+**Agent 接入主流程的方式**:
+1. 通过 `AuditOrchestrator`: 修改 `audit_core/orchestrator.py` 调用新 Agent
+2. 通过 `AgentRuntime`: 使用 `audit_core/agent_runtime.py` 的错误隔离机制
+
+**不要**将 Agent 注册到 `agents/orchestrator_agent.py` 作为当前主流程的接入方式。
 
 ### ingest
 
@@ -289,6 +311,144 @@ result = orchestrator.scan(
 - `GET /report/markdown` - Audit report as Markdown
 - `GET /report/html` - Audit report as HTML
 - `GET /health` - Health check
+
+---
+
+## Analyzer Language Routing
+
+The audit pipeline implements language-based analyzer routing to ensure each analyzer only processes code units of supported languages:
+
+### Routing Flow
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                    AuditOrchestrator._run_analyzers()                        │
+│                                                                              │
+│  1. Group code_units by language                                             │
+│     _group_code_units_by_language(code_units)                               │
+│         → {"python": [...], "javascript": [...], "java": [...]}             │
+│                                                                              │
+│  2. For each language group:                                                 │
+│     ├── Get analyzers: registry.get_analyzers_for_language(language)        │
+│     ├── Run each analyzer on language-specific code_units                    │
+│     └── Handle exceptions (log and continue)                                │
+│                                                                              │
+│  3. Skip "unknown" language:                                                 │
+│     ├── No analyzer runs on unknown language                                │
+│     └── Recorded in metadata["skipped_languages"]                           │
+│                                                                              │
+│  4. Return: (findings, analyzer_metadata)                                   │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Language Grouping
+
+Code units are grouped by their `language` attribute (normalized to lowercase):
+
+| Language | Analyzers |
+|----------|-----------|
+| `python` | PythonAnalyzer, PatternAnalyzer, TaintAnalyzer |
+| `javascript` / `js` | JSAnalyzer, PatternAnalyzer |
+| `java` | JavaAnalyzer |
+| `c` / `cpp` | CAnalyzer, CppAnalyzer |
+| `unknown` | **Skipped** (no analyzer) |
+
+### Unknown Language Handling
+
+When a code unit has `language="unknown"`:
+- **No analyzer runs on it** - skipped entirely
+- **Logged as warning** with reason
+- **Recorded in metadata** under `skipped_languages`
+- **Does not crash the scan**
+
+### Analyzer Error Handling
+
+When an analyzer throws an exception:
+- **Exception is caught** in `_run_analyzers()`
+- **Error is logged** with analyzer name, language, error type/message
+- **Other analyzers continue** executing
+- **Error recorded in metadata** under `analyzer_errors`
+- **Scan does not crash**
+
+### Metadata Structure
+
+The `_run_analyzers()` method returns analyzer metadata:
+
+```python
+{
+    "analyzer_runs": [
+        {"analyzer_name": "...", "language": "...", "success": True, "finding_count": N}
+    ],
+    "analyzer_errors": [
+        {"analyzer_name": "...", "language": "...", "error_type": "...", "error_message": "..."}
+    ],
+    "skipped_languages": [
+        {"language": "unknown", "code_unit_count": N, "reason": "..."}
+    ]
+}
+```
+
+This metadata is stored in `AuditResult.metadata["analyzer_info"]`.
+
+### Benefits
+
+1. **Performance**: Analyzers only process relevant code units
+2. **Accuracy**: Language-specific analysis reduces false positives
+3. **Clarity**: Clear responsibility boundaries per analyzer
+4. **Resilience**: Analyzer failures don't crash the scan
+
+---
+
+## Error Handling and Recovery
+
+The audit pipeline implements comprehensive error isolation and degradation strategies to ensure scan reliability:
+
+### AgentRuntime Error Isolation
+
+The `AgentRuntime` class (`audit_core/agent_runtime.py`) wraps all Agent calls with try/except blocks to prevent individual Agent failures from crashing the entire scan:
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         AgentRuntime                                         │
+│              (audit_core/agent_runtime.py)                                   │
+│                                                                              │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐    │
+│  │  run_recon   │  │ run_analysis │  │  run_judge   │  │build_evidence│    │
+│  │              │  │              │  │              │  │              │    │
+│  │ try:         │  │ try:         │  │ try:         │  │ try:         │    │
+│  │   agent.run  │  │   agent.run  │  │   agent.run  │  │   build...   │    │
+│  │ except:      │  │ except:      │  │ except:      │  │ except:      │    │
+│  │   fallback   │  │   fallback   │  │   fallback   │  │   log only   │    │
+│  └──────────────┘  └──────────────┘  └──────────────┘  └──────────────┘    │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### ErrorPolicy Fallback Strategies
+
+The `ErrorPolicy` class (`audit_core/error_policy.py`) defines degradation strategies for different failure scenarios:
+
+| Stage | Failure Strategy | Fallback Output |
+|-------|-----------------|-----------------|
+| **Recon** | Log failure, continue | Empty hypotheses list `[]` |
+| **Analysis** | Generate low-confidence hypothesis, continue | `AgentHypothesis(confidence="low", fallback_applied=True)` |
+| **Judge** | Generate conservative decision, continue | `JudgeDecision(verdict="suspicious", confidence="low", risk_score=30)` |
+| **Evidence** | Log failure, preserve finding | `None` (finding still in results) |
+
+### AgentExecutionResult
+
+All Agent executions return an `AgentExecutionResult` with:
+- `status`: `"success"`, `"degraded"`, `"failed"`, or `"skipped"`
+- `output`: The actual output (hypothesis, decision, etc.)
+- `logs`: Structured `AgentLog` entries
+- `error`: Exception information (if failed)
+- `fallback_used`: Boolean indicating if fallback was applied
+
+### Benefits
+
+1. **Resilience**: Individual Agent failures don't crash the entire scan
+2. **Observability**: All failures are logged with structured metadata
+3. **Graceful Degradation**: Fallback outputs allow the pipeline to continue
+4. **Conservative Defaults**: Fallback decisions use conservative values (e.g., `verdict="suspicious"`, `risk_score=30`)
 
 ---
 
