@@ -57,13 +57,13 @@ class AgentRuntime:
         code_units: list[CodeUnit]
     ) -> AgentExecutionResult:
         """
-        Run the ReconAgent with error isolation.
+        Run a ReconAgentBase-compatible agent with error isolation.
 
         If the agent fails, returns an empty hypotheses list and logs
         the failure. The audit flow continues.
 
         Args:
-            agent: The ReconAgent instance to run
+            agent: ReconAgentBase-compatible agent instance to run
             code_units: List of code units to analyze
 
         Returns:
@@ -112,13 +112,13 @@ class AgentRuntime:
         code_unit: CodeUnit | None
     ) -> AgentExecutionResult:
         """
-        Run the AnalysisAgent with error isolation.
+        Run an AnalysisAgentBase-compatible agent with error isolation.
 
         If the agent fails, generates a fallback hypothesis with low
         confidence and logs the failure. The audit flow continues.
 
         Args:
-            agent: The AnalysisAgent instance to run
+            agent: AnalysisAgentBase-compatible agent instance to run
             finding: The finding to analyze
             code_unit: Optional code unit for context
 
@@ -156,7 +156,7 @@ class AgentRuntime:
         evidence_bundle: EvidenceBundle | None = None
     ) -> AgentExecutionResult:
         """
-        Run the JudgeAgent with error isolation.
+        Run a JudgeAgentBase-compatible agent with error isolation.
 
         If the agent fails, generates a fallback JudgeDecision with:
         - verdict = "suspicious"
@@ -164,7 +164,7 @@ class AgentRuntime:
         - risk_score = 30 (conservative value)
 
         Args:
-            agent: The JudgeAgent instance to run
+            agent: JudgeAgentBase-compatible agent instance to run
             finding: The finding to evaluate
             hypotheses: List of hypotheses to consider
             evidence_bundle: Optional evidence bundle
@@ -246,13 +246,13 @@ class AgentRuntime:
         code_units: list[CodeUnit]
     ) -> list[AgentExecutionResult]:
         """
-        Run AnalysisAgent on a batch of findings with error isolation.
+        Run an AnalysisAgentBase-compatible agent on a batch of findings with error isolation.
 
         Each finding is processed independently - failures in one finding
         do not affect others.
 
         Args:
-            agent: The AnalysisAgent instance to run
+            agent: AnalysisAgentBase-compatible agent instance to run
             findings: List of findings to analyze
             code_units: List of code units for context lookup
 
@@ -279,13 +279,13 @@ class AgentRuntime:
         evidence_map: dict[str, EvidenceBundle] | None = None
     ) -> list[AgentExecutionResult]:
         """
-        Run JudgeAgent on a batch of findings with error isolation.
+        Run a JudgeAgentBase-compatible agent on a batch of findings with error isolation.
 
         Each finding is judged independently - failures in one finding
         do not affect others.
 
         Args:
-            agent: The JudgeAgent instance to run
+            agent: JudgeAgentBase-compatible agent instance to run
             findings: List of findings to judge
             hypotheses_map: Map of finding_id -> list of hypotheses
             evidence_map: Optional map of finding_id -> evidence bundle
