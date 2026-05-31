@@ -402,9 +402,8 @@ class AuditOrchestrator:
             hypotheses_for_judge: list[AgentHypothesis] = []
             # Add recon hypotheses that might be related to this finding
             for h in recon_hypotheses:
-                if code_unit and h.metadata.get("supporting_evidence_ids"):
-                    if code_unit.id in h.metadata["supporting_evidence_ids"]:
-                        hypotheses_for_judge.append(h)
+                if code_unit and code_unit.id in h.supporting_evidence_ids:
+                    hypotheses_for_judge.append(h)
             # Add analysis hypothesis
             if hypothesis:
                 hypotheses_for_judge.append(hypothesis)

@@ -14,9 +14,7 @@ from audit_core.models import (
     JudgeDecision, AgentLog, EvidenceBundle
 )
 from audit_core.error_policy import ErrorPolicy, AgentExecutionResult
-from agents.recon_agent import ReconAgent
-from agents.analysis_agent import AnalysisAgent
-from agents.judge_agent import JudgeAgent
+from agents.interfaces import ReconAgentBase, AnalysisAgentBase, JudgeAgentBase
 from evidence.evidence_builder import build_evidence_bundle
 
 
@@ -55,7 +53,7 @@ class AgentRuntime:
 
     def run_recon(
         self,
-        agent: ReconAgent,
+        agent: ReconAgentBase,
         code_units: list[CodeUnit]
     ) -> AgentExecutionResult:
         """
@@ -109,7 +107,7 @@ class AgentRuntime:
 
     def run_analysis(
         self,
-        agent: AnalysisAgent,
+        agent: AnalysisAgentBase,
         finding: RawFinding,
         code_unit: CodeUnit | None
     ) -> AgentExecutionResult:
@@ -152,7 +150,7 @@ class AgentRuntime:
 
     def run_judge(
         self,
-        agent: JudgeAgent,
+        agent: JudgeAgentBase,
         finding: RawFinding,
         hypotheses: list[AgentHypothesis],
         evidence_bundle: EvidenceBundle | None = None
@@ -243,7 +241,7 @@ class AgentRuntime:
 
     def run_analysis_batch(
         self,
-        agent: AnalysisAgent,
+        agent: AnalysisAgentBase,
         findings: list[RawFinding],
         code_units: list[CodeUnit]
     ) -> list[AgentExecutionResult]:
@@ -275,7 +273,7 @@ class AgentRuntime:
 
     def run_judge_batch(
         self,
-        agent: JudgeAgent,
+        agent: JudgeAgentBase,
         findings: list[RawFinding],
         hypotheses_map: dict[str, list[AgentHypothesis]],
         evidence_map: dict[str, EvidenceBundle] | None = None

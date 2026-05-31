@@ -9,6 +9,8 @@ Routes:
 - GET /scans/{scan_id}/findings
 - GET /scans/{scan_id}/evidence
 - GET /scans/{scan_id}/agents/logs
+- GET /scans/{scan_id}/metadata
+- GET /scans/{scan_id}/analyzer-info
 - GET /scans/{scan_id}/report/json
 - GET /scans/{scan_id}/report/markdown
 - GET /scans/{scan_id}/report/html
@@ -140,3 +142,53 @@ async def get_scan_report_html(scan_id: str):
     result = _get_result_or_404(scan_id)
     html_content = build_html_report(result)
     return Response(content=html_content, media_type="text/html")
+
+
+@router.get("/scans/{scan_id}/metadata")
+async def get_scan_metadata(scan_id: str):
+    """
+    Return the metadata dict from a specific scan session.
+
+    Metadata typically contains analyzer execution information
+    (analyzer_runs, analyzer_errors, skipped_languages) and
+    any other diagnostic data produced during the audit pipeline.
+
+    Args:
+        scan_id: The scan session identifier returned by POST /scan.
+
+    Returns:
+        Dict with scan metadata. Returns an empty dict if no metadata exists.
+
+    Raises:
+        404: If scan_id does not exist.
+    """
+    result = _get_result_or_404(scan_id)
+    return result.metadata or {}
+
+
+@router.get("/scans/{scan_id}/analyzer-info")
+async def get_scan_analyzer_info(scan_id: str):
+    """
+    Return analyzer execution details from a specific scan session.
+
+    Returns structured information about which analyzers ran, which
+    failed, and which languages were skipped during the scan.
+
+    Args:
+        scan_id: The scan session identifier returned by POST /scan.
+
+    Returns:
+        Dict with keys:
+        - analyzer_runs: List of analyzer execution records
+        - analyzer_errors: List of analyzer error records
+        - skipped_languages: List of skipped language records
+
+    Raises:
+        404: If scan_id does not exist.
+    """
+    result = _get_result_or_404(scan_id)
+    return (result.metadata or {}).get("analyzer_info", {
+        "analyzer_runs": [],
+        "analyzer_errors": [],
+        "skipped_languages": [],
+    })
