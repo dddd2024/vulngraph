@@ -108,7 +108,7 @@ class TestLegacyAnalyzerAdapterBasic:
         """LegacyAnalyzerAdapter should have correct name and supported languages."""
         adapter = LegacyAnalyzerAdapter()
         assert adapter.name == "legacy"
-        assert "python" in adapter.supported_languages
+        assert adapter.supported_languages == ["python"]
 
     def test_analyze_returns_list(self):
         """analyze() should return a list of RawFinding."""

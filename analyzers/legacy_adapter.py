@@ -1,11 +1,16 @@
 """
-Legacy analyzer adapter for integrating old detection logic.
+Legacy analyzer adapter — Python-only transition adapter.
 
-This adapter provides a bridge between the new audit pipeline and
-existing detection modules in the detector/ directory.
+This module provides a **transitional bridge** between the new audit pipeline
+and the old Python-only ``DetectorRunner`` (AST + Plugin + Regex + Taint).
 
-It wraps the old DetectorRunner (AST + Plugin + Regex + Taint engines)
-and converts old finding dicts into audit_core.models.RawFinding objects.
+It wraps the old ``DetectorRunner`` and converts its ``list[dict]`` findings
+into ``list[RawFinding]`` objects that the new audit pipeline can consume.
+
+This adapter is **Python-only**.  It exists solely to keep the legacy Python
+detector functional while the new analyzers are being built out.  Non-Python
+languages are handled by dedicated, language-native analyzers in the
+``analyzers/`` package and are **not** routed through this adapter.
 """
 
 import logging
@@ -22,27 +27,27 @@ logger = logging.getLogger(__name__)
 
 class LegacyAnalyzerAdapter(BaseAnalyzer):
     """
-    Adapter for integrating legacy detection logic.
+    Python-only transition adapter for the legacy DetectorRunner.
 
     This adapter wraps the old ``DetectorRunner`` and converts its
     ``list[dict]`` findings into ``list[RawFinding]`` objects that
     the new audit pipeline can consume.
 
-    For Python code units, it writes content to a temporary file and
-    runs ``DetectorRunner.scan_file()`` which executes:
+    It only handles Python code units — for each one it writes content
+    to a temporary file and runs ``DetectorRunner.scan_file()``, which
+    executes:
       - AST YAML rule engine
       - Python Plugin engine
       - Regex YAML rule engine
       - Taint analysis engine
 
-    Non-Python code units are currently skipped (future: JS/Java/C++ support).
+    Non-Python languages are **not** supported by this adapter; they
+    are served by dedicated, language-native analyzers elsewhere in
+    the ``analyzers/`` package.
     """
 
     name = "legacy"
-    supported_languages = [
-        "python", "javascript", "typescript", "java",
-        "c", "cpp", "go", "rust", "php"
-    ]
+    supported_languages = ["python"]
 
     def __init__(self) -> None:
         self._runner = None
@@ -63,14 +68,14 @@ class LegacyAnalyzerAdapter(BaseAnalyzer):
 
     def analyze(self, code_units: list[CodeUnit]) -> list[RawFinding]:
         """
-        Analyze code units using legacy detection logic.
+        Analyze Python code units using legacy detection logic.
 
         For each Python code unit:
         1. Write content to a temporary file (preserving original extension)
         2. Run DetectorRunner.scan_file() on the temp file
         3. Convert each finding dict to a RawFinding
 
-        Non-Python code units are currently skipped.
+        Non-Python code units are silently skipped.
 
         Args:
             code_units: List of code units to analyze
