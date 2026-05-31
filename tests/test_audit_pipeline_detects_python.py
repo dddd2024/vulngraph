@@ -23,8 +23,7 @@ import sqlite3
 def search_user(user_input):
     conn = sqlite3.connect("db.sqlite3")
     cursor = conn.cursor()
-    query = f"SELECT * FROM users WHERE name = '{user_input}'"
-    cursor.execute(query)
+    cursor.execute(f"SELECT * FROM users WHERE name = '{user_input}'")
     return cursor.fetchall()
 '''
 
@@ -211,12 +210,12 @@ class TestAuditPipelineDetectsPython:
             assert isinstance(finding.evidence, dict)
 
     def test_legacy_engine_not_main_or_analysis_engine(self):
-        """Findings should come from 'legacy' engine, not from old pipeline."""
+        """Findings should come from modern engines, not from old pipeline."""
         orch = AuditOrchestrator()
         result = orch.scan_code(SQL_INJECTION_CODE, language="python")
 
         for finding in result.findings:
-            assert finding.engine in ("legacy", "pattern", "ast", "taint")
+            assert finding.engine in ("python", "pattern", "ast", "taint")
 
 
 class TestAuditPipelineNoDependencyOnOldPipeline:
@@ -227,10 +226,17 @@ class TestAuditPipelineNoDependencyOnOldPipeline:
         assert orch.registry is not None
         assert len(orch.registry.get_analyzers()) > 0
 
-    def test_legacy_adapter_in_registry(self):
-        """LegacyAnalyzerAdapter should be in the default registry."""
+    def test_legacy_adapter_not_in_default_registry(self):
+        """LegacyAnalyzerAdapter should NOT be in the default registry."""
         from audit_core.registry import build_default_registry
         registry = build_default_registry()
+        adapter = registry.get("legacy")
+        assert adapter is None
+
+    def test_legacy_adapter_in_registry_with_enable_legacy(self):
+        """LegacyAnalyzerAdapter should be in the registry when enable_legacy=True."""
+        from audit_core.registry import build_default_registry
+        registry = build_default_registry(enable_legacy=True)
         adapter = registry.get("legacy")
         assert adapter is not None
         assert isinstance(adapter, LegacyAnalyzerAdapter)

@@ -1,0 +1,18 @@
+rules:
+  - id: AST-UD-001
+    name: Unsafe Deserialization
+    type: ast
+    severity: ERROR
+    engine: ast
+    language: python
+    cwe: CWE-502
+    confidence: high
+    message: "Unsafe deserialization with pickle/marshal."
+    enabled: true
+    pattern:
+      kind: call
+      names:
+        - pickle.load
+        - pickle.loads
+        - marshal.load
+        - marshal.loads

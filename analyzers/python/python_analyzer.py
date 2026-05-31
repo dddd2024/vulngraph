@@ -4,12 +4,12 @@ PythonAnalyzer — adapter that wraps detector engines into the BaseAnalyzer int
 Design decisions
 ----------------
 * Does **not** copy any detection logic — directly imports and delegates to
-  ``detector.engines.ast_rule_engine.AstRuleEngine``,
-  ``detector.engines.regex_rule_engine.RegexRuleEngine``, and
-  ``detector.engines.taint_engine.TaintEngine``.
-* All imports of detector modules are **lazy** (inside methods) so that the
-  package can be imported even when the detector sub-tree is absent.
-* Rules are loaded once via ``detector.core.rule_loader.load_yaml_rules()`` and
+  ``analyzers.python.engines.ast_rule_engine.AstRuleEngine``,
+  ``analyzers.python.engines.regex_rule_engine.RegexRuleEngine``, and
+  ``analyzers.python.engines.taint_engine.TaintEngine``.
+* All imports are **lazy** (inside methods) so that the
+  package can be imported even when some modules are absent.
+* Rules are loaded once via ``analyzers.python.core.rule_loader.load_yaml_rules()`` and
   grouped by engine type before being passed to each engine.
 * Each engine call is wrapped in ``_safe_run()`` so that a failure in one
   engine does not prevent the others from running.
@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 
 class PythonAnalyzer(BaseAnalyzer):
     """
-    Unified Python analyzer backed by the detector's AST, Regex, and Taint
+    Unified Python analyzer backed by the AST, Regex, and Taint
     engines.
 
     Produces ``RawFinding`` objects whose ``engine`` field is ``"python"``
@@ -105,8 +105,8 @@ class PythonAnalyzer(BaseAnalyzer):
             return
 
         try:
-            from detector.core.rule_loader import load_yaml_rules
-            from detector.core.models import Rule
+            from analyzers.python.core.rule_loader import load_yaml_rules
+            from analyzers.python.core.models import Rule
         except ImportError as exc:
             logger.warning("Cannot load detector rules: %s", exc)
             self._rules_loaded = True
@@ -185,7 +185,7 @@ class PythonAnalyzer(BaseAnalyzer):
 
     def _run_ast_engine(self, tmp_path: str, unit: CodeUnit) -> list[RawFinding]:
         """Run the AST rule engine and convert findings."""
-        from detector.engines.ast_rule_engine import AstRuleEngine
+        from analyzers.python.engines.ast_rule_engine import AstRuleEngine
 
         if not self._ast_rules:
             return []
@@ -203,7 +203,7 @@ class PythonAnalyzer(BaseAnalyzer):
 
     def _run_regex_engine(self, tmp_path: str, unit: CodeUnit) -> list[RawFinding]:
         """Run the Regex rule engine and convert findings."""
-        from detector.engines.regex_rule_engine import RegexRuleEngine
+        from analyzers.python.engines.regex_rule_engine import RegexRuleEngine
 
         if not self._regex_rules:
             return []
@@ -221,7 +221,7 @@ class PythonAnalyzer(BaseAnalyzer):
 
     def _run_taint_engine(self, tmp_path: str, unit: CodeUnit) -> list[RawFinding]:
         """Run the Taint engine and convert findings."""
-        from detector.engines.taint_engine import TaintEngine
+        from analyzers.python.engines.taint_engine import TaintEngine
 
         if not self._taint_rules:
             return []

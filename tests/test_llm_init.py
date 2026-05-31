@@ -191,3 +191,149 @@ class TestMockClientUsage:
         assert client.get_call_count() == 1
         client.generate("test2")
         assert client.get_call_count() == 2
+
+    def test_mock_always_available_no_external_deps(self):
+        """Mock client is always available regardless of external dependencies."""
+        client = MockLLMClient()
+        assert client.is_available() is True
+        # No API key needed
+        client2 = MockLLMClient(api_key=None)
+        assert client2.is_available() is True
+
+    def test_mock_factory_create_without_api_key(self):
+        """Factory can create mock client without any API key."""
+        client = LLMClientFactory.create("mock")
+        assert client.is_available() is True
+        resp = client.generate("test prompt")
+        assert resp.success is True
+
+
+# ---------------------------------------------------------------------------
+# Tests: OpenAI / DeepSeek client behavior (no real API calls)
+# ---------------------------------------------------------------------------
+
+class TestOpenAIClientNoRealCalls:
+
+    def test_openai_client_instantiation_no_api_call(self):
+        """Creating OpenAIClient does not trigger any API call."""
+        from llm.openai_client import OpenAIClient
+        # Instantiate without API key - no network call should happen
+        client = OpenAIClient(api_key=None)
+        assert client._client is None  # Lazy-loaded, not yet initialized
+
+    def test_openai_is_available_false_without_api_key(self):
+        """OpenAIClient.is_available() returns False when no API key is set."""
+        from llm.openai_client import OpenAIClient
+        # Clear env var temporarily
+        import os
+        old_key = os.environ.get("OPENAI_API_KEY")
+        try:
+            if "OPENAI_API_KEY" in os.environ:
+                del os.environ["OPENAI_API_KEY"]
+            client = OpenAIClient(api_key=None)
+            assert client.is_available() is False
+        finally:
+            if old_key:
+                os.environ["OPENAI_API_KEY"] = old_key
+
+    def test_openai_generate_raises_without_api_key(self):
+        """OpenAIClient.generate() raises LLMConfigError without API key."""
+        from llm.openai_client import OpenAIClient
+        from llm.exceptions import LLMConfigError
+        import os
+
+        old_key = os.environ.get("OPENAI_API_KEY")
+        try:
+            if "OPENAI_API_KEY" in os.environ:
+                del os.environ["OPENAI_API_KEY"]
+            client = OpenAIClient(api_key=None)
+            with pytest.raises(LLMConfigError):
+                client.generate("test prompt")
+        finally:
+            if old_key:
+                os.environ["OPENAI_API_KEY"] = old_key
+
+    def test_openai_registered_when_module_importable(self):
+        """If OpenAIClient module is importable, 'openai' should be registered."""
+        # This test runs in the actual environment
+        providers = LLMClientFactory.available_providers()
+        # openai_client.py is always importable (SDK check is lazy)
+        assert "openai" in providers
+
+
+class TestDeepSeekClientNoRealCalls:
+
+    def test_deepseek_client_instantiation_no_api_call(self):
+        """Creating DeepSeekClient does not trigger any API call."""
+        from llm.deepseek_client import DeepSeekClient
+        client = DeepSeekClient(api_key=None)
+        assert client._client is None  # Lazy-loaded
+
+    def test_deepseek_is_available_false_without_api_key(self):
+        """DeepSeekClient.is_available() returns False when no API key is set."""
+        from llm.deepseek_client import DeepSeekClient
+        import os
+
+        old_key = os.environ.get("DEEPSEEK_API_KEY")
+        try:
+            if "DEEPSEEK_API_KEY" in os.environ:
+                del os.environ["DEEPSEEK_API_KEY"]
+            client = DeepSeekClient(api_key=None)
+            assert client.is_available() is False
+        finally:
+            if old_key:
+                os.environ["DEEPSEEK_API_KEY"] = old_key
+
+    def test_deepseek_generate_raises_without_api_key(self):
+        """DeepSeekClient.generate() raises LLMConfigError without API key."""
+        from llm.deepseek_client import DeepSeekClient
+        from llm.exceptions import LLMConfigError
+        import os
+
+        old_key = os.environ.get("DEEPSEEK_API_KEY")
+        try:
+            if "DEEPSEEK_API_KEY" in os.environ:
+                del os.environ["DEEPSEEK_API_KEY"]
+            client = DeepSeekClient(api_key=None)
+            with pytest.raises(LLMConfigError):
+                client.generate("test prompt")
+        finally:
+            if old_key:
+                os.environ["DEEPSEEK_API_KEY"] = old_key
+
+    def test_deepseek_registered_when_module_importable(self):
+        """If DeepSeekClient module is importable, 'deepseek' should be registered."""
+        providers = LLMClientFactory.available_providers()
+        assert "deepseek" in providers
+
+
+# ---------------------------------------------------------------------------
+# Tests: No real API calls in any test
+# ---------------------------------------------------------------------------
+
+class TestNoRealAPICalls:
+
+    def test_mock_client_no_network_io(self):
+        """Mock client never performs any network I/O."""
+        client = MockLLMClient(response_delay_ms=0)
+        # Multiple calls should never touch network
+        for _ in range(5):
+            resp = client.generate("test")
+            assert resp.success is True
+        # Call count proves it's local
+        assert client.get_call_count() == 5
+
+    def test_factory_create_mock_is_safe(self):
+        """Factory.create('mock') is always safe (no real API)."""
+        client = LLMClientFactory.create("mock")
+        assert isinstance(client, MockLLMClient)
+        resp = client.generate("any prompt")
+        assert resp.success is True
+
+    def test_openai_client_lazy_init_no_network(self):
+        """OpenAIClient does not connect on instantiation."""
+        from llm.openai_client import OpenAIClient
+        # Even with a fake API key, instantiation should not call API
+        client = OpenAIClient(api_key="fake-key-for-test")
+        # _client is None until generate() is called
+        assert client._client is None

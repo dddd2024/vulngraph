@@ -1,0 +1,16 @@
+rules:
+  - id: AST-DM-001
+    name: Debug Mode Enabled
+    type: ast
+    severity: WARNING
+    engine: ast
+    language: python
+    cwe: CWE-489
+    confidence: medium
+    message: "Debug mode is enabled."
+    enabled: true
+    pattern:
+      kind: assignment
+      target_names:
+        - DEBUG
+      value: true

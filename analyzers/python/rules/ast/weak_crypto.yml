@@ -1,0 +1,18 @@
+rules:
+  - id: AST-WC-001
+    name: Weak Cryptography
+    type: ast
+    severity: WARNING
+    engine: ast
+    language: python
+    cwe: CWE-327
+    confidence: medium
+    message: "Weak cryptographic algorithm detected (MD5/SHA1/DES/RC4)."
+    enabled: true
+    pattern:
+      kind: call
+      names:
+        - hashlib.md5
+        - hashlib.sha1
+        - DES.new
+        - ARC4.new
