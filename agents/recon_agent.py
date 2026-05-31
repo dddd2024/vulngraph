@@ -7,13 +7,13 @@ potential attack surfaces and areas of interest for further analysis.
 
 import re
 from audit_core.models import CodeUnit, AgentHypothesis, AgentLog
-from agents.base_agent import BaseAgent
+from agents.interfaces import ReconAgentBase
 
 
-class ReconAgent(BaseAgent):
+class ReconAgent(ReconAgentBase):
     """
     Agent that performs initial reconnaissance on code.
-    
+
     Extracts lightweight attack surface information from CodeUnits:
     - Web routes (HTTP endpoints)
     - Request parameters (user input sources)
@@ -21,13 +21,13 @@ class ReconAgent(BaseAgent):
     - SQL operations (database queries)
     - Command execution (system calls)
     - Deserialization (object loading)
-    
+
     Does NOT read files directly - only analyzes CodeUnit content.
     Does NOT call analyzers - only identifies patterns.
     """
-    
+
     name = "recon"
-    
+
     # Pattern definitions for attack surface detection
     ROUTE_PATTERNS = {
         "python": [
@@ -51,7 +51,7 @@ class ReconAgent(BaseAgent):
             r'@RequestMapping\s*\(\s*value\s*=\s*["\']([^"\']+)["\']',
         ],
     }
-    
+
     REQUEST_PATTERNS = {
         "python": [
             r'request\.args\.get\s*\(\s*["\']([^"\']+)["\']',
@@ -76,7 +76,7 @@ class ReconAgent(BaseAgent):
             r'HttpServletRequest',
         ],
     }
-    
+
     FILE_PATTERNS = {
         "python": [
             r'open\s*\(\s*([^,\)]+)',
@@ -107,7 +107,7 @@ class ReconAgent(BaseAgent):
             r'write\s*\(\s*',
         ],
     }
-    
+
     SQL_PATTERNS = {
         "python": [
             r'\.execute\s*\(\s*',
@@ -133,7 +133,7 @@ class ReconAgent(BaseAgent):
             r'INSERT\s+',
         ],
     }
-    
+
     COMMAND_PATTERNS = {
         "python": [
             r'os\.system\s*\(\s*',
@@ -161,7 +161,7 @@ class ReconAgent(BaseAgent):
             r'exec[lv][pe]?\s*\(\s*',
         ],
     }
-    
+
     DESERIALIZATION_PATTERNS = {
         "python": [
             r'pickle\.load\s*\(\s*',
@@ -178,26 +178,26 @@ class ReconAgent(BaseAgent):
             r'JSON\.parse\s*\(\s*',  # Less dangerous but worth noting
         ],
     }
-    
+
     def run(self, code_units: list[CodeUnit]) -> tuple[list[AgentHypothesis], list[AgentLog]]:
         """
         Run reconnaissance on code units.
-        
+
         Args:
             code_units: List of code units to inspect
-            
+
         Returns:
             Tuple of (hypotheses, logs)
         """
         hypotheses: list[AgentHypothesis] = []
         logs: list[AgentLog] = []
-        
+
         attack_surfaces: dict[str, list[dict]] = {}
-        
+
         for unit in code_units:
             surfaces = self._extract_attack_surfaces(unit)
             attack_surfaces[unit.path] = surfaces
-            
+
             # Generate hypotheses for significant attack surfaces
             if surfaces:
                 hypothesis = AgentHypothesis(
@@ -213,7 +213,7 @@ class ReconAgent(BaseAgent):
                     }
                 )
                 hypotheses.append(hypothesis)
-        
+
         # Log reconnaissance activity
         log = AgentLog(
             agent_name=self.name,
@@ -227,23 +227,23 @@ class ReconAgent(BaseAgent):
             }
         )
         logs.append(log)
-        
+
         return hypotheses, logs
-    
+
     def _extract_attack_surfaces(self, unit: CodeUnit) -> list[dict]:
         """
         Extract attack surfaces from a code unit.
-        
+
         Args:
             unit: Code unit to analyze
-            
+
         Returns:
             List of attack surface dictionaries
         """
         surfaces: list[dict] = []
         content = unit.content
         language = unit.language
-        
+
         # Extract routes
         routes = self._find_patterns(content, language, self.ROUTE_PATTERNS, "route")
         for route in routes:
@@ -253,7 +253,7 @@ class ReconAgent(BaseAgent):
                 "line": route["line"],
                 "risk": "medium",
             })
-        
+
         # Extract request parameters
         requests = self._find_patterns(content, language, self.REQUEST_PATTERNS, "request")
         for req in requests:
@@ -263,7 +263,7 @@ class ReconAgent(BaseAgent):
                 "line": req["line"],
                 "risk": "high",
             })
-        
+
         # Extract file operations
         files = self._find_patterns(content, language, self.FILE_PATTERNS, "file")
         for file_op in files:
@@ -273,7 +273,7 @@ class ReconAgent(BaseAgent):
                 "line": file_op["line"],
                 "risk": "medium",
             })
-        
+
         # Extract SQL operations
         sqls = self._find_patterns(content, language, self.SQL_PATTERNS, "sql")
         for sql in sqls:
@@ -283,7 +283,7 @@ class ReconAgent(BaseAgent):
                 "line": sql["line"],
                 "risk": "high",
             })
-        
+
         # Extract command execution
         commands = self._find_patterns(content, language, self.COMMAND_PATTERNS, "command")
         for cmd in commands:
@@ -293,7 +293,7 @@ class ReconAgent(BaseAgent):
                 "line": cmd["line"],
                 "risk": "critical",
             })
-        
+
         # Extract deserialization
         desers = self._find_patterns(content, language, self.DESERIALIZATION_PATTERNS, "deserialization")
         for deser in desers:
@@ -303,9 +303,9 @@ class ReconAgent(BaseAgent):
                 "line": deser["line"],
                 "risk": "critical",
             })
-        
+
         return surfaces
-    
+
     def _find_patterns(
         self,
         content: str,
@@ -315,19 +315,19 @@ class ReconAgent(BaseAgent):
     ) -> list[dict]:
         """
         Find all matches for patterns in content.
-        
+
         Args:
             content: Code content
             language: Programming language
             pattern_dict: Dictionary of patterns by language
             category: Pattern category name
-            
+
         Returns:
             List of match dictionaries with 'match' and 'line' keys
         """
         matches: list[dict] = []
         patterns = pattern_dict.get(language, [])
-        
+
         lines = content.split("\n")
         for i, line in enumerate(lines, start=1):
             for pattern in patterns:
@@ -340,30 +340,30 @@ class ReconAgent(BaseAgent):
                         })
                 except re.error:
                     continue
-        
+
         return matches
-    
+
     def _summarize_surfaces(self, surfaces: list[dict]) -> str:
         """
         Summarize attack surfaces for hypothesis reasoning.
-        
+
         Args:
             surfaces: List of attack surface dictionaries
-            
+
         Returns:
             Summary string
         """
         if not surfaces:
             return "No attack surfaces identified."
-        
+
         # Count by type
         type_counts: dict[str, int] = {}
         for surface in surfaces:
             type_counts[surface["type"]] = type_counts.get(surface["type"], 0) + 1
-        
+
         # Build summary
         parts = []
         for type_name, count in sorted(type_counts.items(), key=lambda x: -x[1]):
             parts.append(f"{count} {type_name} operations")
-        
+
         return f"Identified: {', '.join(parts)}. These entry points may require security review."

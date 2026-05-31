@@ -4,8 +4,12 @@
   "title": "ScanResponse",
   "description": "Response from /scan API endpoint",
   "type": "object",
-  "required": ["summary", "findings", "evidence", "agent_logs"],
+  "required": ["scan_id", "summary", "findings", "evidence", "agent_logs"],
   "properties": {
+    "scan_id": {
+      "type": "string",
+      "description": "Unique identifier for this scan session"
+    },
     "summary": {
       "type": "object",
       "description": "Audit summary statistics",

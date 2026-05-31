@@ -149,6 +149,8 @@ python api/server.py
 - [ARCHITECTURE.md](ARCHITECTURE.md) - 架构文档
 - [TASKS/core_orchestrator_task.md](TASKS/core_orchestrator_task.md) - Core Orchestrator 任务模板
 - [TASKS/analyzer_taint_task.md](TASKS/analyzer_taint_task.md) - Analyzer & Taint Engine 任务模板
+- [TASKS/agent_knowledge_task.md](TASKS/agent_knowledge_task.md) - Agent & Knowledge 任务模板
+- [TASKS/api_report_ui_task.md](TASKS/api_report_ui_task.md) - API / UI / Report 任务模板
 
 ## 开发规范
 

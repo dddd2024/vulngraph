@@ -1,7 +1,7 @@
 """
 Findings API routes.
 
-GET /findings — return findings from the most recent scan.
+GET /findings — return findings from the most recent scan (backward-compatible).
 """
 
 from fastapi import APIRouter
@@ -14,5 +14,5 @@ router = APIRouter(tags=["findings"])
 @router.get("/findings")
 async def list_findings():
     """Return all findings from the most recent scan."""
-    result = audit_state.get()
+    result = audit_state.get_latest()
     return [f.model_dump(mode="json") for f in result.findings]

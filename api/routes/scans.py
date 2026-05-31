@@ -1,0 +1,142 @@
+"""
+Scan session API routes.
+
+Provides endpoints to query specific scan results by scan_id.
+These routes complement the legacy /findings, /evidence, /agents/logs,
+and /report/* routes by allowing retrieval of historical scan results.
+
+Routes:
+- GET /scans/{scan_id}/findings
+- GET /scans/{scan_id}/evidence
+- GET /scans/{scan_id}/agents/logs
+- GET /scans/{scan_id}/report/json
+- GET /scans/{scan_id}/report/markdown
+- GET /scans/{scan_id}/report/html
+"""
+
+from fastapi import APIRouter, HTTPException, Response
+
+from api.state import audit_state
+from report.json_report import build_json_report
+from report.markdown_report import build_markdown_report
+from report.html_report import build_html_report
+
+router = APIRouter(tags=["scans"])
+
+
+def _get_result_or_404(scan_id: str):
+    """Get audit result by scan_id or raise 404."""
+    result = audit_state.get_by_id(scan_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail=f"Scan not found: {scan_id}")
+    return result
+
+
+@router.get("/scans/{scan_id}/findings")
+async def get_scan_findings(scan_id: str):
+    """
+    Return findings from a specific scan session.
+
+    Args:
+        scan_id: The scan session identifier returned by POST /scan.
+
+    Returns:
+        List of findings for the specified scan.
+
+    Raises:
+        404: If scan_id does not exist.
+    """
+    result = _get_result_or_404(scan_id)
+    return [f.model_dump(mode="json") for f in result.findings]
+
+
+@router.get("/scans/{scan_id}/evidence")
+async def get_scan_evidence(scan_id: str):
+    """
+    Return evidence bundles from a specific scan session.
+
+    Args:
+        scan_id: The scan session identifier returned by POST /scan.
+
+    Returns:
+        List of evidence bundles for the specified scan.
+
+    Raises:
+        404: If scan_id does not exist.
+    """
+    result = _get_result_or_404(scan_id)
+    return [e.model_dump(mode="json") for e in result.evidence]
+
+
+@router.get("/scans/{scan_id}/agents/logs")
+async def get_scan_agent_logs(scan_id: str):
+    """
+    Return agent execution logs from a specific scan session.
+
+    Args:
+        scan_id: The scan session identifier returned by POST /scan.
+
+    Returns:
+        List of agent logs for the specified scan.
+
+    Raises:
+        404: If scan_id does not exist.
+    """
+    result = _get_result_or_404(scan_id)
+    return [l.model_dump(mode="json") for l in result.agent_logs]
+
+
+@router.get("/scans/{scan_id}/report/json")
+async def get_scan_report_json(scan_id: str):
+    """
+    Return the full audit result from a specific scan as JSON.
+
+    Args:
+        scan_id: The scan session identifier returned by POST /scan.
+
+    Returns:
+        Full audit result in JSON format.
+
+    Raises:
+        404: If scan_id does not exist.
+    """
+    result = _get_result_or_404(scan_id)
+    return build_json_report(result)
+
+
+@router.get("/scans/{scan_id}/report/markdown")
+async def get_scan_report_markdown(scan_id: str):
+    """
+    Return the audit report from a specific scan as Markdown.
+
+    Args:
+        scan_id: The scan session identifier returned by POST /scan.
+
+    Returns:
+        Audit report in Markdown format.
+
+    Raises:
+        404: If scan_id does not exist.
+    """
+    result = _get_result_or_404(scan_id)
+    markdown_content = build_markdown_report(result)
+    return Response(content=markdown_content, media_type="text/markdown")
+
+
+@router.get("/scans/{scan_id}/report/html")
+async def get_scan_report_html(scan_id: str):
+    """
+    Return the audit report from a specific scan as HTML.
+
+    Args:
+        scan_id: The scan session identifier returned by POST /scan.
+
+    Returns:
+        Audit report in HTML format.
+
+    Raises:
+        404: If scan_id does not exist.
+    """
+    result = _get_result_or_404(scan_id)
+    html_content = build_html_report(result)
+    return Response(content=html_content, media_type="text/html")

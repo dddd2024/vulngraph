@@ -1,238 +1,228 @@
-# Agents 模块治理规范
+# VulnPatch Agents
 
-## 本模块职责
+LLM-powered analysis agents for vulnerability detection and assessment.
 
-LLM 驱动的智能分析 Agent，负责对 Analyzers 的发现进行推理、验证和裁决。
+## Overview
 
-**核心任务**:
-- ReconAgent: 初始代码侦察
-- AnalysisAgent: 漏洞分析和假设生成
-- JudgeAgent: 最终裁决和风险评分
-- OrchestratorAgent: 多 Agent 协调
+Agents perform reasoning tasks on structured data (CodeUnit, RawFinding, EvidenceBundle) using LLMs. They do NOT directly read files or scan repositories.
 
-**注意**: Agents 只处理结构化对象，**不直接读取文件系统**，**不直接扫描代码**。
+## Agent Architecture
 
----
+### Base Classes
 
-## 允许输入
+We provide two levels of base classes:
 
-### 输入类型
-- `CodeUnit` - 代码单元对象
-- `RawFinding` - 分析器发现
-- `AgentHypothesis` - 其他 Agent 的假设
-- `EvidenceBundle` - 证据包
+1. **BaseAgent** (`base_agent.py`) - Generic abstract base with flexible `run(*args, **kwargs)` signature
+2. **Strongly-typed Interfaces** (`interfaces.py`) - Specific signatures for each Agent role
 
-### 输入来源
-- 仅通过 `run()` 方法参数接收输入
-- 禁止直接读取文件系统
-- 禁止直接扫描代码库
+### Recommended Usage
 
----
-
-## 允许输出
-
-### 输出类型
-- `AgentHypothesis` - Agent 假设
-- `AgentLog` - Agent 执行日志
-- `JudgeDecision` - 裁决决定
-
-### 输出要求
-- `AgentHypothesis`: 必须包含 `agent_name`, `finding_id`, `hypothesis`, `confidence`
-- `JudgeDecision`: 必须包含 `finding_id`, `verdict`, `risk_score`, `reason`
-
----
-
-## 禁止跨模块行为
-
-### 绝对禁止
-1. ❌ **禁止直接读取文件系统**
-   ```python
-   # 禁止
-   with open("some_file.py") as f:
-       content = f.read()
-   
-   # 禁止
-   import os
-   for root, dirs, files in os.walk("/path/to/repo"):
-       ...
-   ```
-
-2. ❌ **禁止直接扫描代码库**
-   ```python
-   # 禁止
-   from ingest.repo_loader import RepoLoader
-   loader = RepoLoader()
-   units = loader.load_local_repo("/path/to/repo")
-   ```
-
-3. ❌ **禁止修改 `audit_core/models.py`**
-
-4. ❌ **禁止修改 Analyzers**
-
-5. ❌ **禁止在 Agent 中实现检测规则**
-
-### 允许的内部导入
-```python
-# 允许
-from audit_core.models import CodeUnit, RawFinding, AgentHypothesis
-from agents.base_agent import BaseAgent
-from evidence.snippet_extractor import extract_snippet
-from knowledge.cwe_mapper import map_cwe
-```
-
----
-
-## 必须遵守的数据模型
-
-### 输入模型
-```python
-# CodeUnit
-class CodeUnit(BaseModel):
-    id: str
-    path: str
-    language: str
-    content: str
-    start_line: int
-    end_line: Optional[int]
-    metadata: dict[str, Any]
-
-# RawFinding
-class RawFinding(BaseModel):
-    id: str
-    rule_id: str
-    type: str
-    severity: str
-    confidence: str
-    file_path: str
-    start_line: int
-    message: str
-```
-
-### 输出模型
-```python
-# AgentHypothesis
-class AgentHypothesis(BaseModel):
-    id: str
-    agent_name: str
-    finding_id: Optional[str]
-    hypothesis: str
-    vulnerability_type: Optional[str]
-    reasoning_summary: str
-    confidence: str
-    supporting_evidence_ids: list[str]
-    metadata: dict[str, Any]
-
-# JudgeDecision
-class JudgeDecision(BaseModel):
-    id: str
-    finding_id: str
-    verdict: str  # confirmed, suspicious, rejected
-    confidence: str
-    risk_score: float
-    reason: str
-    metadata: dict[str, Any]
-
-# AgentLog
-class AgentLog(BaseModel):
-    id: str
-    agent_name: str
-    stage: str
-    message: str
-    input_refs: list[str]
-    output_refs: list[str]
-    timestamp: datetime
-    metadata: dict[str, Any]
-```
-
----
-
-## 实现规范
-
-### 创建新 Agent
-
-1. 继承 `BaseAgent`
-2. 实现 `run()` 方法
-3. 设置 `name` 类属性
-4. 返回指定的输出类型
+For specific Agent roles, inherit from the strongly-typed interfaces in `interfaces.py`:
 
 ```python
-from agents.base_agent import BaseAgent
+from agents.interfaces import AnalysisAgentBase
 from audit_core.models import RawFinding, AgentHypothesis, AgentLog
 
-class MyAgent(BaseAgent):
-    name = "my_agent"
-    
-    def run(self, finding: RawFinding) -> tuple[AgentHypothesis, AgentLog]:
-        # 分析逻辑（可以调用 LLM）
-        hypothesis = AgentHypothesis(
-            agent_name=self.name,
-            finding_id=finding.id,
-            hypothesis="Potential vulnerability detected",
-            reasoning_summary="Based on pattern analysis...",
-            confidence="medium"
-        )
-        
-        log = AgentLog(
-            agent_name=self.name,
-            stage="analysis",
-            message=f"Analyzed finding {finding.id}",
-            input_refs=[finding.id],
-            output_refs=[hypothesis.id]
-        )
-        
-        return hypothesis, log
+class MyAnalysisAgent(AnalysisAgentBase):
+    name = "my_analysis"
+
+    def run(
+        self,
+        finding: RawFinding,
+        code_unit: CodeUnit | None = None
+    ) -> tuple[AgentHypothesis, AgentLog]:
+        # Implementation with type safety
+        ...
 ```
 
-### LLM 调用规范
+## Agent Types
+
+### 1. ReconAgent (Reconnaissance)
+
+**Purpose**: Initial code inspection to identify attack surfaces
+
+**Input**: `list[CodeUnit]`
+
+**Output**: `tuple[list[AgentHypothesis], list[AgentLog]]`
+
+**Base Class**: `ReconAgentBase`
+
+**Detects**:
+- Web routes (HTTP endpoints)
+- Request parameters (user input sources)
+- File operations (read/write)
+- SQL operations (database queries)
+- Command execution (system calls)
+- Deserialization (object loading)
+
+**Example**:
+```python
+from agents.recon_agent import ReconAgent
+from audit_core.models import CodeUnit
+
+agent = ReconAgent()
+code_units = [CodeUnit(...), ...]
+hypotheses, logs = agent.run(code_units)
+```
+
+### 2. AnalysisAgent
+
+**Purpose**: Analyze findings and generate vulnerability hypotheses
+
+**Input**: 
+- `finding: RawFinding` - The finding to analyze
+- `code_unit: CodeUnit | None` - Optional context
+
+**Output**: `tuple[AgentHypothesis, AgentLog]`
+
+**Base Class**: `AnalysisAgentBase`
+
+**Features**:
+- LLM analysis (placeholder for Stage 2)
+- Rule-based fallback when LLM unavailable
+- Type-specific reasoning
+
+**Example**:
+```python
+from agents.analysis_agent import AnalysisAgent
+from audit_core.models import RawFinding
+
+agent = AnalysisAgent()
+finding = RawFinding(...)
+hypothesis, log = agent.run(finding, code_unit=None)
+```
+
+### 3. JudgeAgent
+
+**Purpose**: Make final decisions on vulnerability validity
+
+**Input**:
+- `finding: RawFinding` - The finding to evaluate
+- `hypotheses: list[AgentHypothesis]` - Hypotheses from other agents
+- `evidence_bundle: EvidenceBundle | None` - Supporting evidence
+
+**Output**: `tuple[JudgeDecision, AgentLog]`
+
+**Base Class**: `JudgeAgentBase`
+
+**Verdicts**:
+- `confirmed` - High confidence vulnerability (risk >= 70)
+- `suspicious` - Potential vulnerability requiring review (risk >= 30)
+- `rejected` - False positive or low-risk (risk < 30)
+
+**Scoring**:
+- Risk score (0-100) based on severity, confidence, and evidence
+- Severity weight: 50%
+- Confidence weight: 30%
+- Evidence weight: 20%
+
+**Example**:
+```python
+from agents.judge_agent import JudgeAgent
+from audit_core.models import RawFinding, AgentHypothesis
+
+agent = JudgeAgent()
+finding = RawFinding(...)
+hypotheses = [AgentHypothesis(...), ...]
+decision, log = agent.run(finding, hypotheses, evidence_bundle=None)
+
+print(decision.verdict)  # "confirmed", "suspicious", or "rejected"
+print(decision.risk_score)  # 0-100
+```
+
+## Input/Output Contracts
+
+### ReconAgent
 
 ```python
-# 允许：在 Agent 中调用 LLM
-class AnalysisAgent(BaseAgent):
-    def run(self, finding: RawFinding, code_unit: CodeUnit):
-        # 构建 prompt
-        prompt = self._build_prompt(finding, code_unit)
-        
-        # 调用 LLM
-        response = self.llm_client.complete(prompt)
-        
-        # 解析响应
-        hypothesis = self._parse_response(response)
-        
-        return hypothesis, log
+def run(self, code_units: list[CodeUnit]) -> tuple[list[AgentHypothesis], list[AgentLog]]:
+    """
+    Args:
+        code_units: List of code units to inspect
+
+    Returns:
+        - hypotheses: Attack surface hypotheses for significant findings
+        - logs: Execution logs for audit trail
+    """
 ```
 
----
+### AnalysisAgent
 
-## 数据流规范
+```python
+def run(
+    self,
+    finding: RawFinding,
+    code_unit: CodeUnit | None = None,
+) -> tuple[AgentHypothesis, AgentLog]:
+    """
+    Args:
+        finding: The RawFinding to analyze
+        code_unit: Optional CodeUnit containing the finding
 
-### 正确的数据流
+    Returns:
+        - hypothesis: Vulnerability hypothesis with reasoning
+        - log: Execution log for audit trail
+    """
 ```
-Orchestrator → CodeUnit → Agent.run(CodeUnit) → AgentHypothesis
+
+### JudgeAgent
+
+```python
+def run(
+    self,
+    finding: RawFinding,
+    hypotheses: list[AgentHypothesis],
+    evidence_bundle: EvidenceBundle | None = None,
+) -> tuple[JudgeDecision, AgentLog]:
+    """
+    Args:
+        finding: The RawFinding to evaluate
+        hypotheses: List of AgentHypothesis from other agents
+        evidence_bundle: Optional EvidenceBundle with evidence
+
+    Returns:
+        - decision: Final verdict with risk score and reasoning
+        - log: Execution log for audit trail
+    """
 ```
 
-### 错误的数据流
+## Data Models
+
+Agents work with these core models from `audit_core.models`:
+
+- **CodeUnit**: Code file with path, language, content, AST
+- **RawFinding**: Analyzer output with type, severity, location
+- **AgentHypothesis**: Agent's vulnerability assessment
+- **AgentLog**: Execution trace and audit trail
+- **JudgeDecision**: Final verdict with risk score
+- **EvidenceBundle**: Supporting evidence (snippets, call chains)
+
+## Constraints
+
+### Agents MUST NOT:
+- Read files directly (use CodeUnit.content)
+- Call analyzers directly
+- Modify audit_core/models.py
+
+### Agents MUST:
+- Process only structured objects
+- Support LLM fallback (AnalysisAgent)
+- Return typed results per interface contract
+- Log all activity via AgentLog
+
+## Testing
+
+Run Agent tests:
+```bash
+python -m pytest tests/test_agents.py -v
+python -m pytest tests/test_recon_agent.py -v
+python -m pytest tests/test_analysis_agent.py -v
+python -m pytest tests/test_judge_agent.py -v
 ```
-Agent → 读取文件系统 → CodeUnit  # 禁止！
-Agent → 调用 Analyzer → RawFinding  # 禁止！
-```
 
----
+## Future Work (Stage 2)
 
-## 提交前检查清单
-
-- [ ] 我没有直接读取文件系统
-- [ ] 我没有直接扫描代码库
-- [ ] 我的 Agent 只处理结构化对象
-- [ ] 我的 Agent 输出符合规定的模型
-- [ ] 我没有修改 `audit_core/models.py`
-- [ ] 我没有修改 Analyzers
-- [ ] 所有单元测试通过
-- [ ] 架构守卫检查通过
-
----
-
-## 修改记录
-
-| 日期 | 修改人 | 修改内容 |
-|------|--------|----------|
-| 2026-05-30 | Core Orchestrator | 初始版本 |
+- Real LLM integration for AnalysisAgent
+- Additional Agent roles (PatchAgent, ExploitAgent)
+- Agent-to-Agent communication protocol
+- Streaming agent responses

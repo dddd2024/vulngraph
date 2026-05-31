@@ -18,8 +18,15 @@
 ### 1. 查看当前任务
 
 ```bash
-# 查看任务模板
-cat TASKS/<your_module>_task.md
+# 查看任务模板（根据你的角色选择对应的模板）
+# 成员 1: Core Orchestrator
+cat TASKS/core_orchestrator_task.md
+# 成员 2: Analyzer & Taint Engine
+cat TASKS/analyzer_taint_task.md
+# 成员 3: Agent & Knowledge
+cat TASKS/agent_knowledge_task.md
+# 成员 4: API / UI / Report
+cat TASKS/api_report_ui_task.md
 ```
 
 ### 2. 确认修改范围
@@ -102,7 +109,12 @@ AGENTS.md (根目录)
    # 必须运行的测试
    python governance/architecture_guard.py
    python -m pytest tests/contracts/ -v
-   python -m pytest tests/test_<your_module>/ -v
+
+   # 模块测试（按角色选择）
+   # Core: python -m pytest tests/test_core/ tests/test_ingest/ -v
+   # Analyzer: python -m pytest tests/test_analyzers/ -v
+   # Agent: python -m pytest tests/test_agents/ tests/test_evidence/ tests/test_knowledge/ -v
+   # API: python -m pytest tests/test_api/ tests/test_report/ -v
    ```
 
 4. **填写 PR 描述**
@@ -138,21 +150,45 @@ AGENTS.md (根目录)
 
 ## 如何跑测试
 
-### 必须运行的测试
+### 必须运行的测试（所有人，每次提交前）
 
 ```bash
-# 1. 架构守卫检查（所有人）
+# 1. 架构守卫检查
 python governance/architecture_guard.py
 
-# 2. 契约测试（所有人）
+# 2. 契约测试
 python -m pytest tests/contracts/ -v
-
-# 3. 模块单元测试（各自）
-python -m pytest tests/test_<your_module>/ -v
-
-# 4. 集成测试（修改 orchestrator 时）
-python -m pytest tests/test_integration.py -v
 ```
+
+### 各成员模块测试
+
+```bash
+# 成员 1: Core Orchestrator（audit_core/, ingest/）
+python -m pytest tests/test_core/ tests/test_ingest/ -v
+
+# 成员 2: Analyzer & Taint Engine（analyzers/）
+python -m pytest tests/test_analyzers/ -v
+
+# 成员 3: Agent & Knowledge（agents/, evidence/, knowledge/）
+python -m pytest tests/test_agents/ tests/test_evidence/ tests/test_knowledge/ -v
+
+# 成员 4: API / Report / UI（api/, report/）
+python -m pytest tests/test_api/ tests/test_report/ -v
+```
+
+### 集成测试（建议合并前运行）
+
+```bash
+python -m pytest tests/test_integration/ -v
+```
+
+### 运行全部测试
+
+```bash
+python -m pytest tests/ -v
+```
+
+> 详细测试结构说明见 [tests/README.md](tests/README.md)
 
 ### 测试失败怎么办
 
@@ -290,10 +326,19 @@ python governance/architecture_guard.py
 # 契约测试
 python -m pytest tests/contracts/ -v
 
-# 单元测试
-python -m pytest tests/test_<module>/ -v
+# 模块测试（按角色）
+python -m pytest tests/test_core/ tests/test_ingest/ -v          # Core
+python -m pytest tests/test_analyzers/ -v                        # Analyzer
+python -m pytest tests/test_agents/ tests/test_evidence/ tests/test_knowledge/ -v  # Agent
+python -m pytest tests/test_api/ tests/test_report/ -v           # API
 
-# 端到端测试
+# 集成测试
+python -m pytest tests/test_integration/ -v
+
+# 全部测试
+python -m pytest tests/ -v
+
+# 端到端验证
 python -c "from audit_core.orchestrator import AuditOrchestrator; o = AuditOrchestrator(); print(o.scan_code('def test(): pass', 'python'))"
 ```
 
@@ -305,7 +350,14 @@ ARCHITECTURE.md              # 架构文档
 TASKS/                       # 任务模板
 governance/                  # 架构治理
 contracts/                   # JSON Schema
+tests/                       # 测试目录
+tests/README.md              # 测试结构说明
 tests/contracts/             # 契约测试
+tests/test_core/             # Core 测试
+tests/test_analyzers/        # Analyzer 测试
+tests/test_agents/           # Agent 测试
+tests/test_api/              # API 测试
+tests/test_integration/      # 集成测试
 ```
 
 ### 联系人
@@ -336,5 +388,5 @@ tests/contracts/             # 契约测试
 
 ---
 
-*最后更新: 2025-05-30*
-*版本: v1.0*
+*最后更新: 2026-05-31*
+*版本: v1.1*

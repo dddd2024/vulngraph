@@ -21,6 +21,7 @@ class ScanRequest(BaseModel):
 
 class ScanResponse(BaseModel):
     """Response model for /scan endpoint."""
+    scan_id: str = Field(..., description="Unique identifier for this scan session")
     summary: dict
     findings: list[dict]
     evidence: list[dict]
