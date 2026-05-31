@@ -1,0 +1,75 @@
+# CODEOWNERS - VulnPatch 多人协作边界定义
+#
+# 每个目录指定负责人，确保 PR 审查时自动请求对应成员。
+# 四人分工：
+# - 成员 1: Core & Orchestrator (audit_core/, ingest/, governance/)
+# - 成员 2: Analyzer & Taint (analyzers/, parser/)
+# - 成员 3: Agent & Knowledge (agents/, knowledge/, evidence/)
+# - 成员 4: API, UI & Report (api/, report/, ui/)
+#
+# 公共契约需要全员审查。
+
+# 公共契约 - 全员审查
+/audit_core/models.py                    @member1 @member2 @member3 @member4
+/contracts/                              @member1 @member2 @member3 @member4
+/governance/public_contracts.yaml        @member1 @member2 @member3 @member4
+/governance/module_boundaries.yaml       @member1 @member2 @member3 @member4
+
+# 成员 1: Core & Orchestrator
+/audit_core/                             @member1
+/audit_core/pipeline.py                  @member1
+/audit_core/stages/                      @member1
+/audit_core/orchestrator.py              @member1
+/audit_core/registry.py                  @member1
+/audit_core/agent_runtime.py             @member1
+/audit_core/result_merger.py             @member1
+/audit_core/scoring.py                   @member1
+/ingest/                                 @member1
+/governance/                             @member1
+
+# 成员 2: Analyzer & Taint
+/analyzers/                              @member2
+/analyzers/python/                       @member2
+/analyzers/java/                         @member2
+/analyzers/javascript/                   @member2
+/analyzers/c_cpp/                        @member2
+/analyzers/taint/                        @member2
+/parser/                                 @member2
+
+# 成员 3: Agent & Knowledge
+/agents/                                 @member3
+/agents/recon/                           @member3
+/agents/analysis/                        @member3
+/agents/judge/                           @member3
+/agents/registry.py                      @member3
+/agents/register_builtin.py              @member3
+/knowledge/                              @member3
+/evidence/                               @member3
+/llm/                                    @member3
+
+# 成员 4: API, UI & Report
+/api/                                    @member4
+/api/routes/                             @member4
+/api/view_models.py                      @member4
+/api/schemas.py                          @member4
+/api/server.py                           @member4
+/api/state.py                            @member4
+/report/                                 @member4
+/ui/                                     @member4
+
+# 测试 - 按对应模块审查
+/tests/test_core/                        @member1
+/tests/test_analyzers/                   @member2
+/tests/test_agents/                      @member3
+/tests/test_api/                         @member4
+/tests/test_report/                      @member4
+/tests/contracts/                        @member1 @member2 @member3 @member4
+
+# 文档 - 全员可审查
+/AGENTS.md                               @member1 @member2 @member3 @member4
+/AI_COLLABORATION.md                     @member1 @member2 @member3 @member4
+/ARCHITECTURE.md                         @member1 @member2 @member3 @member4
+/TASKS/                                  @member1 @member2 @member3 @member4
+
+# CI/CD - 成员 1 负责
+/.github/                                @member1

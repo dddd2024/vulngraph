@@ -1,175 +1,129 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>VulnGraph Sentinel Console</title>
-  <link rel="stylesheet" href="/ui/styles.css">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VulnPatch - Vulnerability Scanner</title>
+  <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <header class="topbar">
-    <div class="topbar-left">
-      <div class="logo">VG</div>
-      <div>
-        <div class="product-name" id="productName">VulnGraph Sentinel Console</div>
-        <div class="product-sub" id="productSub">基于多语言静态分析与知识图谱的漏洞检测系统</div>
-      </div>
-    </div>
-    <div class="topbar-right">
-      <div class="status-chip"><span id="labelService">服务</span> <span id="topStatus">-</span></div>
-      <div class="status-chip"><span id="labelEngine">引擎</span> <span id="topEngine">-</span></div>
-      <div class="status-chip"><span id="labelJob">任务</span> <span id="topJob">idle</span></div>
-      <select id="langSwitch" class="lang-switch" aria-label="language">
+  <!-- Header -->
+  <header class="header">
+    <h1>VulnPatch</h1>
+    <div class="header-controls">
+      <select id="lang-select">
         <option value="zh-CN">中文</option>
         <option value="en-US">English</option>
       </select>
     </div>
   </header>
 
-  <div class="shell">
-    <aside class="sidebar">
-      <a href="#analyze" id="navAnalyze">Analyze</a>
-      <a href="#findings" id="navFindings">Findings</a>
-      <a href="#graph" id="navGraph">Graph</a>
-      <a href="#raw-json" id="navRaw">Raw JSON</a>
-    </aside>
-
-    <main class="content">
-      <section id="overview" class="card">
-        <h2 id="titleOverview">Security Overview</h2>
-        <div class="kpi-grid">
-          <div class="kpi"><div class="kpi-label" id="kpiLabelFindings">Findings</div><div id="kpiFindings" class="kpi-value">0</div></div>
-          <div class="kpi"><div class="kpi-label" id="kpiLabelMaxRisk">Max Risk</div><div id="kpiMaxRisk" class="kpi-value risk-low">0</div></div>
-          <div class="kpi"><div class="kpi-label" id="kpiLabelCritical">Critical Issues</div><div id="kpiCritical" class="kpi-value">0</div></div>
-          <div class="kpi"><div class="kpi-label" id="kpiLabelEngine">Engine</div><div id="kpiEngine" class="kpi-value">-</div></div>
-          <div class="kpi"><div class="kpi-label" id="kpiLabelSkipped">Skipped Files</div><div id="kpiSkipped" class="kpi-value">0</div></div>
-        </div>
-      </section>
-
-      <section id="analyze" class="card">
-        <h2 id="titleAnalyze">Analyze Target</h2>
-
-        <div class="segmented" role="tablist" aria-label="输入类型">
-          <button class="seg-btn active" id="segCode" data-type="code">Code Snippet</button>
-          <button class="seg-btn" id="segGithub" data-type="github">GitHub Repository</button>
+  <!-- Main Layout -->
+  <div class="main-layout">
+    <!-- Left Panel - Input -->
+    <div class="left-panel">
+      <div class="input-section">
+        <div class="input-tabs">
+          <button class="tab-btn active" data-type="code">代码片段</button>
+          <button class="tab-btn" data-type="path">本地仓库</button>
+          <button class="tab-btn" data-type="github">GitHub</button>
         </div>
 
-        <div id="codePanel" class="input-panel">
-          <div class="form-grid">
-            <div style="flex: 1;">
-              <label for="codeInput">代码输入</label>
-              <textarea id="codeInput" class="code-editor" spellcheck="false" placeholder="def search_user(name):&#10;    sql = 'SELECT * FROM users WHERE name=' + name&#10;    return conn.execute(sql).fetchall()"></textarea>
-            </div>
-            <div style="width: 160px;">
-              <label for="languageSelect">语言</label>
-              <select id="languageSelect">
-                <option value="auto">Auto Detect</option>
-                <option value="python">Python</option>
-                <option value="javascript">JavaScript</option>
-                <option value="typescript">TypeScript</option>
-                <option value="java">Java</option>
-                <option value="c">C</option>
-                <option value="cpp">C++</option>
-              </select>
-              <div class="hint" style="margin-top: 4px;">选择代码语言，Auto 会自动检测</div>
-            </div>
-          </div>
-        </div>
-
-        <div id="repoPanel" class="input-panel hidden">
-          <label for="repoUrl">GitHub 仓库 URL</label>
-          <input id="repoUrl" placeholder="https://github.com/owner/repo">
-          <div class="hint">选择 GitHub Repository 时，后端会克隆仓库并分析多语言代码文件（Python、JavaScript、TypeScript、Java、C/C++ 等）。</div>
-        </div>
-
-        <div class="actions">
-          <button id="analyzeInputBtn" class="btn btn-primary">开始分析</button>
-          <button id="resetBtn" class="btn">重置演示项目</button>
-          <button id="testsBtn" class="btn">运行检测回归测试</button>
-        </div>
-      </section>
-
-      <section class="card">
-        <h2 id="titleProgress">Analysis Progress</h2>
-        <div class="stepper" id="stepper">
-          <div class="step" data-step="prepare">Prepare</div>
-          <div class="step" data-step="detect">Detect</div>
-          <div class="step" data-step="report">Report</div>
-          <div class="step" data-step="done">Done</div>
-        </div>
-        <div class="progress-wrap">
-          <div id="progressBar" class="progress-bar"></div>
-        </div>
-        <div id="jobInfo" class="job-info">状态：idle</div>
-        <div id="errorPanel" class="error-panel hidden"></div>
-      </section>
-
-      <section id="findings" class="card two-col">
-        <div>
-          <h2 id="titleFindings">Findings</h2>
-          <div class="lang-filter-bar" id="langFilterBar">
-            <button class="lang-chip active" data-lang="all">All</button>
-            <button class="lang-chip" data-lang="Python">Python</button>
-            <button class="lang-chip" data-lang="JavaScript">JavaScript</button>
-            <button class="lang-chip" data-lang="TypeScript">TypeScript</button>
-            <button class="lang-chip" data-lang="Java">Java</button>
-            <button class="lang-chip" data-lang="C/C++">C/C++</button>
-          </div>
-          <div id="langSummary" class="lang-summary"></div>
-          <div id="findingsList" class="findings-list"></div>
-          <div id="findingsEmpty" class="empty">暂无漏洞结果。运行分析后会在此展示结构化发现。</div>
-        </div>
-        <div>
-          <h2 id="titleDetail">Finding Detail</h2>
-          <div id="findingDetail" class="detail-panel">请选择一条漏洞记录查看详情。</div>
-        </div>
-      </section>
-
-      <section id="graph" class="card">
-        <h2 id="titleAdvanced">Advanced Analysis</h2>
-        <div class="form-grid" style="margin-bottom: 12px;">
-          <div style="width: 140px;">
-            <label for="kgAiMode" id="labelKgAiMode">知识图谱 AI 模式</label>
-            <select id="kgAiMode">
-              <option value="rule">Rule</option>
-              <option value="cloud">Cloud</option>
-              <option value="local">Local</option>
+        <div class="input-content">
+          <div class="input-area" id="code-input-area">
+            <select id="language-select">
+              <option value="auto">自动检测</option>
+              <option value="python">Python</option>
+              <option value="javascript">JavaScript</option>
+              <option value="java">Java</option>
+              <option value="c">C/C++</option>
             </select>
+            <textarea id="code-input" placeholder="粘贴代码片段..." rows="10"></textarea>
           </div>
-          <div style="flex: 1;">
-            <label for="kgModelName" id="labelKgModelName">模型名称（可选）</label>
-            <input id="kgModelName" placeholder="留空使用默认模型">
-          </div>
-          <div style="flex: 1;">
-            <label for="kgApiKey" id="labelKgApiKey">API Key（可选）</label>
-            <input id="kgApiKey" type="password" placeholder="留空使用 .env 配置">
-          </div>
-        </div>
-        <div class="form-row" style="margin-bottom: 12px;">
-          <label class="checkbox-label">
-            <input type="checkbox" id="kgSyncNeo4j">
-            <span id="labelKgSyncNeo4j">同步到 Neo4j</span>
-          </label>
-        </div>
-        <div class="actions">
-          <button id="graphBtn" class="btn">查看调用图</button>
-          <button id="kgBtn" class="btn">查看漏洞知识图谱</button>
-        </div>
-        <div id="graphOut" class="graph-output">图分析输出会显示在这里。</div>
-      </section>
 
-      <section id="raw-json" class="card">
-        <details>
-          <summary id="titleRaw">Advanced Raw JSON</summary>
-          <div class="actions">
-            <button id="copyJsonBtn" class="btn">Copy JSON</button>
+          <div class="input-area hidden" id="path-input-area">
+            <input type="text" id="repo-path" placeholder="输入本地仓库路径...">
           </div>
-          <pre id="rawOut" class="mono-block">就绪。请先运行分析。</pre>
-        </details>
-      </section>
-    </main>
+
+          <div class="input-area hidden" id="github-input-area">
+            <input type="text" id="repo-url" placeholder="输入 GitHub 仓库 URL...">
+          </div>
+        </div>
+
+        <button id="analyze-btn" class="analyze-btn">开始分析</button>
+      </div>
+
+      <!-- Overview -->
+      <div class="overview-section">
+        <h3>扫描概览</h3>
+        <div id="overview"></div>
+      </div>
+    </div>
+
+    <!-- Center Panel - Findings -->
+    <div class="center-panel">
+      <div class="findings-header">
+        <h3>漏洞列表</h3>
+        <div class="filter-controls">
+          <select id="language-filter">
+            <option value="all">全部语言</option>
+            <option value="python">Python</option>
+            <option value="javascript">JavaScript</option>
+            <option value="java">Java</option>
+            <option value="c">C/C++</option>
+          </select>
+        </div>
+      </div>
+      <div id="findings-list"></div>
+    </div>
+
+    <!-- Right Panel - Details -->
+    <div class="right-panel">
+      <div id="finding-detail"></div>
+    </div>
   </div>
 
-  <script src="/ui/app.js"></script>
+  <!-- Bottom Tabs -->
+  <div class="bottom-section">
+    <div class="bottom-tabs">
+      <button class="bottom-tab-btn active" data-tab="graph">调用图</button>
+      <button class="bottom-tab-btn" data-tab="knowledge">知识图谱</button>
+      <button class="bottom-tab-btn" data-tab="raw">原始 JSON</button>
+    </div>
+
+    <div class="bottom-content">
+      <div class="bottom-panel" id="graph-panel">
+        <div id="graph-container"></div>
+      </div>
+
+      <div class="bottom-panel hidden" id="knowledge-panel">
+        <div id="knowledge-container"></div>
+      </div>
+
+      <div class="bottom-panel hidden" id="raw-panel">
+        <div class="raw-controls">
+          <button id="copy-json-btn">复制 JSON</button>
+        </div>
+        <pre id="raw-json"></pre>
+      </div>
+    </div>
+  </div>
+
+  <!-- Status Bar -->
+  <div class="status-bar">
+    <span id="status-message">等待输入</span>
+    <span id="status-progress"></span>
+  </div>
+
+  <!-- Error Display -->
+  <div id="error-display" class="error-display hidden"></div>
+
+  <!-- Load modular JS files -->
+  <script src="i18n.js"></script>
+  <script src="state.js"></script>
+  <script src="api.js"></script>
+  <script src="findings.js"></script>
+  <script src="graph.js"></script>
+  <script src="app.js"></script>
 </body>
 </html>

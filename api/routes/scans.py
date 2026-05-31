@@ -7,6 +7,7 @@ and /report/* routes by allowing retrieval of historical scan results.
 
 Routes:
 - GET /scans/{scan_id}/findings
+- GET /scans/{scan_id}/findings/view  (UI-friendly view model)
 - GET /scans/{scan_id}/evidence
 - GET /scans/{scan_id}/agents/logs
 - GET /scans/{scan_id}/metadata
@@ -19,6 +20,7 @@ Routes:
 from fastapi import APIRouter, HTTPException, Response
 
 from api.state import audit_state
+from api.view_models import ScanView
 from report.json_report import build_json_report
 from report.markdown_report import build_markdown_report
 from report.html_report import build_html_report
@@ -192,3 +194,42 @@ async def get_scan_analyzer_info(scan_id: str):
         "analyzer_errors": [],
         "skipped_languages": [],
     })
+
+
+@router.get("/scans/{scan_id}/findings/view")
+async def get_scan_findings_view(scan_id: str):
+    """
+    Return UI-friendly finding views from a specific scan session.
+
+    This endpoint returns FindingView objects that merge data from
+    RawFinding and JudgeDecision, providing a stable contract for
+    UI rendering. The UI should prefer this endpoint over the raw
+    /findings endpoint.
+
+    Field Mapping:
+    - file_path -> file
+    - start_line -> line
+    - JudgeDecision.risk_score -> risk_score
+    - JudgeDecision.verdict -> verdict
+
+    Args:
+        scan_id: The scan session identifier returned by POST /scan.
+
+    Returns:
+        ScanView with findings as FindingView objects:
+        - scan_id: Scan identifier
+        - status: "completed"
+        - total_findings: Count of findings
+        - confirmed_count: Confirmed findings
+        - suspicious_count: Suspicious findings
+        - rejected_count: Rejected findings
+        - risk_score: Average risk score
+        - languages: Languages scanned
+        - findings: List of FindingView objects
+
+    Raises:
+        404: If scan_id does not exist.
+    """
+    result = _get_result_or_404(scan_id)
+    view = ScanView.from_audit_result(scan_id, result)
+    return view.to_dict()

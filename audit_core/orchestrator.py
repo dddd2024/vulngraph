@@ -8,6 +8,11 @@ The AuditOrchestrator coordinates the entire audit process:
 4. Run agents to analyze findings (via AgentRuntime with error isolation)
 5. Build evidence bundles
 6. Generate final audit result
+
+Pipeline Mode (Stage 2.2):
+- Orchestrator can delegate to Pipeline for stage execution
+- Each stage is independently testable and extensible
+- New stages can be added without modifying the orchestrator
 """
 
 import logging
@@ -20,6 +25,7 @@ from audit_core.models import (
 from audit_core.registry import AnalyzerRegistry, build_default_registry
 from audit_core.result_merger import merge_findings
 from audit_core.agent_runtime import AgentRuntime
+from audit_core.pipeline import Pipeline
 from ingest.repo_loader import RepoLoader
 from agents.registry import AgentRegistry, build_default_agent_registry
 
@@ -55,9 +61,11 @@ class AuditOrchestrator:
         self,
         registry: AnalyzerRegistry | None = None,
         agent_registry: AgentRegistry | None = None,
+        pipeline: Pipeline | None = None,
         *,
         llm_client: Any | None = None,
         llm_config: dict[str, Any] | None = None,
+        use_pipeline: bool = False,
     ):
         """
         Initialize the orchestrator.
@@ -65,12 +73,14 @@ class AuditOrchestrator:
         Args:
             registry: Optional analyzer registry (defaults to build_default_registry)
             agent_registry: Optional agent registry (defaults to build_default_agent_registry)
+            pipeline: Optional Pipeline instance for stage-based execution
             llm_client: Optional LLMClientBase instance for LLM-powered analysis.
                         When provided, AnalysisAgent will use this client instead
                         of rule-based fallback.
             llm_config: Optional dict for creating an LLM client via factory.
                         Example: {"provider": "mock"} or {"provider": "openai", "api_key": "..."}
                         Ignored if llm_client is directly provided.
+            use_pipeline: If True, use Pipeline for execution instead of inline _run_audit
         """
         self.registry = registry or build_default_registry()
         self.repo_loader = RepoLoader()
@@ -89,6 +99,10 @@ class AuditOrchestrator:
         if self.analysis_agent is not None and hasattr(self.analysis_agent, 'set_llm_client'):
             self.analysis_agent.set_llm_client(resolved_client)
         self._llm_client = resolved_client
+
+        # Pipeline mode (optional)
+        self._use_pipeline = use_pipeline or (pipeline is not None)
+        self._pipeline = pipeline
 
     @staticmethod
     def _resolve_llm_client(
@@ -364,6 +378,44 @@ class AuditOrchestrator:
     def _run_audit(self, code_units: list[CodeUnit]) -> AuditResult:
         """
         Run the full audit pipeline with error-isolated Agent execution.
+
+        Supports two modes:
+        1. Pipeline mode: Delegates to Pipeline for stage-based execution
+        2. Inline mode: Executes stages directly in this method
+
+        Args:
+            code_units: List of code units to analyze
+
+        Returns:
+            Complete AuditResult
+        """
+        if self._use_pipeline:
+            return self._run_audit_pipeline(code_units)
+        return self._run_audit_inline(code_units)
+
+    def _run_audit_pipeline(self, code_units: list[CodeUnit]) -> AuditResult:
+        """
+        Run audit using Pipeline (stage-based execution).
+
+        Args:
+            code_units: List of code units to analyze
+
+        Returns:
+            Complete AuditResult
+        """
+        pipeline = self._pipeline or Pipeline.build_default_pipeline(
+            analyzer_registry=self.registry,
+            agent_registry=self.agent_registry,
+            agent_runtime=self.agent_runtime,
+        )
+        return pipeline.run(code_units)
+
+    def _run_audit_inline(self, code_units: list[CodeUnit]) -> AuditResult:
+        """
+        Run audit inline (original implementation).
+
+        This is the legacy execution path that runs all steps
+        directly in this method. Kept for backward compatibility.
 
         Args:
             code_units: List of code units to analyze
