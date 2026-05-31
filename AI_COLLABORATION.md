@@ -13,6 +13,89 @@
 
 ---
 
+## Agent Registry 机制
+
+### 概述
+
+`AgentRegistry` 是 Agent 模块的注册中心，与 `AnalyzerRegistry` 模式一致。
+所有 Agent 通过 `agents/register_builtin.py` 注册，`AuditOrchestrator` 从
+registry 获取 Agent 实例，不再硬编码具体 Agent 类。
+
+### 关键文件
+
+```
+agents/registry.py            # AgentRegistry 类定义
+agents/register_builtin.py    # 内置 Agent 注册入口
+```
+
+### 注册新 Agent 的步骤
+
+1. 在 `agents/` 下创建新 Agent 类（继承 `BaseAgent` 或强类型接口）
+2. 在 `agents/register_builtin.py` 的 `register_builtin_agents()` 中添加注册调用
+3. 运行测试确认注册成功
+
+### 使用示例
+
+```python
+from agents.registry import AgentRegistry, build_default_agent_registry
+
+# 获取默认 registry（包含所有内置 Agent）
+reg = build_default_agent_registry()
+
+# 按角色获取 Agent
+recon = reg.get_recon()       # ReconAgent
+analysis = reg.get_analysis() # AnalysisAgent
+judge = reg.get_judge()       # JudgeAgent
+
+# 按名称获取
+agent = reg.get("recon")
+
+# 自定义 registry
+custom_reg = AgentRegistry()
+custom_reg.register(MyCustomAgent())
+orchestrator = AuditOrchestrator(agent_registry=custom_reg)
+```
+
+---
+
+## UI 使用 /scan 契约
+
+### 前端 API 调用
+
+前端 `ui/app.js` 使用 `POST /scan` 作为唯一的扫描入口：
+
+```javascript
+// 发起扫描
+const result = await call("/scan", "POST", {
+  input_type: "code",    // "code" | "path" | "github"
+  code: "...",           // 代码片段
+  repo_url: "...",       // GitHub URL
+  language: "python"     // 语言（可选）
+});
+
+// 结果字段
+result.scan_id      // 扫描 ID
+result.summary      // 审计摘要
+result.findings     // 漏洞列表（RawFinding[]）
+result.evidence     // 证据包列表
+result.agent_logs   // Agent 日志列表
+```
+
+### 字段映射
+
+| 旧字段（已废弃） | 新字段（/scan 契约） | 说明 |
+|------------------|---------------------|------|
+| `result.vulnerabilities` | `result.findings` | 漏洞列表 |
+| `result.skipped_details` | `result.summary.scanned_files` | 跳过信息 |
+
+### 注意事项
+
+- 前端不再使用 `/analyze-input-async` 和 `/jobs/{id}` 轮询模式
+- 所有扫描通过同步 `POST /scan` 完成
+- 原始 JSON 展示保留完整的 /scan 响应（包含 evidence、agent_logs）
+
+---
+
 ## 开始任务前如何限定 Scope
 
 ### 1. 查看当前任务
@@ -389,4 +472,4 @@ tests/test_integration/      # 集成测试
 ---
 
 *最后更新: 2026-05-31*
-*版本: v1.1*
+*版本: v1.2 - Stage 2.1 多人协作架构补强*

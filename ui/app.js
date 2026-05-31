@@ -214,7 +214,7 @@
   }
 
   function renderFindings(result) {
-    const vulns = Array.isArray(result && result.vulnerabilities) ? result.vulnerabilities.slice() : [];
+    const vulns = Array.isArray(result && result.findings) ? result.findings.slice() : [];
     vulns.sort((a, b) => (Number(b.risk_score) || 0) - (Number(a.risk_score) || 0));
     sortedFindings = vulns;
     els.findingsList.innerHTML = "";
@@ -317,7 +317,7 @@
   }
 
   function updateOverview(result) {
-    const vulns = Array.isArray(result && result.vulnerabilities) ? result.vulnerabilities : [];
+    const vulns = Array.isArray(result && result.findings) ? result.findings : [];
     const risks = vulns.map(v => Number(v.risk_score) || 0);
     const maxRisk = risks.length ? Math.max.apply(null, risks) : 0;
     const critical = vulns.filter(v => (Number(v.risk_score) || 0) >= 80).length;
@@ -506,8 +506,8 @@
     if (running) return;
     setError("");
     setRunning(true);
-    setTopbarState("queued");
-    setJobProgress({ status: "queued", stage: "prepare", progress: 0, message: "等待任务调度" });
+    setTopbarState("scanning");
+    setJobProgress({ status: "scanning", stage: "detect", progress: 50, message: "正在执行安全扫描" });
 
     const payload = {
       input_type: inputType,
@@ -517,29 +517,18 @@
     };
 
     try {
-      const task = await call("/analyze-input-async", "POST", payload);
-      const jobId = task.job_id;
-      while (true) {
-        const job = await call("/jobs/" + jobId, "GET");
-        setJobProgress(job);
-        if (job.status === "completed") {
-          lastAnalysisResult = job.result || {};
-          updateOverview(lastAnalysisResult);
-          renderFindings(lastAnalysisResult);
-          setRawJson(lastAnalysisResult);
-          setTopbarState("completed");
-          break;
-        }
-        if (job.status === "failed") {
-          setError("分析失败：" + (job.error || "未知错误"));
-          setTopbarState("failed");
-          break;
-        }
-        await sleep(700);
-      }
+      // Use the /scan endpoint (synchronous) — the canonical API contract
+      const result = await call("/scan", "POST", payload);
+      lastAnalysisResult = result;
+      updateOverview(lastAnalysisResult);
+      renderFindings(lastAnalysisResult);
+      setRawJson(lastAnalysisResult);
+      setTopbarState("completed");
+      setJobProgress({ status: "completed", stage: "done", progress: 100, message: "扫描完成" });
     } catch (e) {
       setError(String(e));
       setTopbarState("failed");
+      setJobProgress({ status: "failed", stage: "detect", progress: 0, message: "扫描失败" });
     } finally {
       setRunning(false);
     }
@@ -576,7 +565,7 @@
   }
 
   async function showKnowledgeGraph() {
-    if (!lastAnalysisResult || !Array.isArray(lastAnalysisResult.vulnerabilities) || lastAnalysisResult.vulnerabilities.length === 0) {
+    if (!lastAnalysisResult || !Array.isArray(lastAnalysisResult.findings) || lastAnalysisResult.findings.length === 0) {
       els.graphOut.textContent = "请先完成一次漏洞分析，再查看知识图谱。";
       return;
     }
@@ -585,7 +574,7 @@
     const apiKey = els.kgApiKey ? els.kgApiKey.value.trim() : "";
     const syncNeo4j = els.kgSyncNeo4j ? els.kgSyncNeo4j.checked : false;
     const payload = {
-      vulnerabilities: lastAnalysisResult.vulnerabilities,
+      vulnerabilities: lastAnalysisResult.findings,
       ai_mode: aiMode,
       sync_neo4j: syncNeo4j
     };
@@ -622,7 +611,7 @@
       applyI18n();
       setTopbarState(els.topJob.textContent);
       refreshHealth();
-      updateOverview(lastAnalysisResult || { vulnerabilities: [] });
+      updateOverview(lastAnalysisResult || { findings: [] });
     });
     // 语言过滤器事件
     document.getElementById("langFilterBar").addEventListener("click", function (e) {
@@ -690,8 +679,8 @@
     applyI18n();
     setInputType("code");
     setTopbarState(t("idle"));
-    updateOverview({ vulnerabilities: [] });
-    renderFindings({ vulnerabilities: [] });
+    updateOverview({ findings: [] });
+    renderFindings({ findings: [] });
     setRawJson({ status: "ready" });
     setError("");
   }

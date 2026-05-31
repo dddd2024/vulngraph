@@ -4,16 +4,19 @@
 
 VulnPatch 是一个模块化安全审计平台，结合静态分析与 LLM 推理能力检测源代码漏洞。
 
-**当前阶段**: Stage 2 Ready（架构治理增强完成，准备进入模块能力填充）
+**当前阶段**: Stage 2.1（多人协作架构补强完成，Agent Registry + Taint 统一 + UI 契约对齐）
 
 **核心目标**: 建立 AI 协作治理机制，确保四位成员在并行开发时遵守架构边界和契约。
 
 **已完成治理增强**:
 - ✅ 四人任务模板补齐（TASKS/*.md）
 - ✅ Analyzer Registry 插件化（支持按语言路由）
+- ✅ Agent Registry 插件化（`agents/registry.py` + `agents/register_builtin.py`）
 - ✅ Agent 强类型接口（BaseAgent + AgentRuntime 错误隔离）
 - ✅ /scan session 化（支持多扫描隔离）
 - ✅ 模块化测试目录（tests/test_<module>/）
+- ✅ Taint 入口统一（顶层 TaintAnalyzer 委托给 python/engines/taint_engine.py）
+- ✅ UI 契约对齐（前端使用 /scan，渲染 findings 而非 vulnerabilities）
 
 **阶段说明**:
 - 可以按四人任务模板进入模块能力填充
@@ -116,8 +119,16 @@ EvidenceBundle → knowledge → report → AuditResult
 ### Agent 接入方式
 
 新增 Agent 必须通过以下方式接入主流程：
-1. **通过 AuditOrchestrator**: 修改 `audit_core/orchestrator.py` 调用新 Agent
-2. **通过 AgentRuntime**: 使用 `audit_core/agent_runtime.py` 的错误隔离机制
+1. **通过 AgentRegistry 注册**: 在 `agents/register_builtin.py` 中注册新 Agent
+2. **通过 AuditOrchestrator**: `AuditOrchestrator` 从 `AgentRegistry` 获取默认 Agent，无需硬编码 Agent 类
+3. **通过 AgentRuntime**: 使用 `audit_core/agent_runtime.py` 的错误隔离机制
+
+**Agent Registry 机制**（Stage 2.1 新增）:
+- `agents/registry.py` — `AgentRegistry` 类，提供 `register()`、`get()`、`get_recon()`、`get_analysis()`、`get_judge()` 等方法
+- `agents/register_builtin.py` — 内置 Agent 注册入口，注册 ReconAgent、AnalysisAgent、JudgeAgent
+- `build_default_agent_registry()` — 构建预装所有内置 Agent 的 registry
+- `AuditOrchestrator` 接受可选 `agent_registry` 参数，默认使用 `build_default_agent_registry()`
+- 新增 Agent 只需修改 `agents/register_builtin.py`，无需修改 `AuditOrchestrator`
 
 **不要**将 Agent 注册到 `agents/orchestrator_agent.py` 作为当前主流程的接入方式。
 
@@ -218,13 +229,15 @@ EvidenceBundle → knowledge → report → AuditResult
 - `evidence/` - 证据构建
 
 **职责**:
-- 实现 ReconAgent
-- 实现 AnalysisAgent（LLM 集成）
-- 实现 JudgeAgent
+- 实现 ReconAgent、AnalysisAgent、JudgeAgent
+- 维护 Agent Registry（`agents/registry.py`、`agents/register_builtin.py`）
+- 新增 Agent 通过 `register_builtin_agents()` 注册到 `AgentRegistry`
+- LLM 集成（AnalysisAgent 的 LLM 分析模式）
 - 实现 CWE 映射和知识图谱
+- 证据构建和证据包管理
 
 **允许修改**:
-- `agents/*.py`
+- `agents/*.py`（包括 `agents/registry.py`、`agents/register_builtin.py`）
 - `knowledge/*.py`
 - `evidence/*.py`
 - `tests/test_agents*.py`, `tests/test_knowledge*.py`
@@ -233,9 +246,11 @@ EvidenceBundle → knowledge → report → AuditResult
 - 直接读取文件系统（使用 CodeUnit）
 - 修改 `audit_core/models.py`
 - 修改 Analyzers
+- 在 Agent 中实现检测逻辑（检测由 Analyzer 负责）
 
 **Agent 接入方式**:
-- 新增 Agent 通过 `AuditOrchestrator` 或 `AgentRuntime` 接入主流程
+- 新增 Agent 通过 `agents/register_builtin.py` 注册到 `AgentRegistry`
+- `AuditOrchestrator` 自动从 `AgentRegistry` 获取 Agent，无需硬编码
 - `OrchestratorAgent` 仅作为未来可选的 LLM 策略协调 Agent，不承担当前工程主流程调度
 
 ### 成员 4: API, UI & Report
@@ -246,21 +261,29 @@ EvidenceBundle → knowledge → report → AuditResult
 - `ui/` - 用户界面
 
 **职责**:
-- 维护 API 路由
+- 维护 API 路由（以 `POST /scan` 为主入口）
 - 实现报告生成器（JSON/Markdown/HTML）
 - 维护 UI 组件
-- 确保 API 契约合规
+- 确保 API 契约合规（/scan 返回 summary、findings、evidence、agent_logs）
+- UI 前端使用 `/scan` 同步接口，渲染 `result.findings`（非 `result.vulnerabilities`）
+
+**UI / API 契约**（Stage 2.1 对齐）:
+- 前端 `ui/app.js` 调用 `POST /scan` 获取扫描结果（不再使用 `/analyze-input-async` + `/jobs/{id}` 轮询）
+- 扫描结果字段映射：`result.findings`（漏洞列表）、`result.evidence`（证据包）、`result.agent_logs`（Agent 日志）
+- UI 渲染漏洞列表时从 `result.findings` 读取，每条 finding 包含 `type`、`severity`、`risk_score`、`file_path`、`start_line` 等字段
+- 原始 JSON 展示保留完整的 /scan 响应
 
 **允许修改**:
 - `api/*.py`, `api/routes/*.py`
 - `report/*.py`
-- `ui/*.py`
+- `ui/*.js`, `ui/*.html`, `ui/*.css`
 - `tests/test_api*.py`, `tests/test_report*.py`
 
 **禁止**:
 - 在 API 中实现检测规则
 - 修改 `audit_core/models.py`
 - 修改 Analyzers 或 Agents
+- 在前端实现任何扫描逻辑
 
 ---
 
@@ -404,4 +427,4 @@ python -c "from audit_core.orchestrator import AuditOrchestrator; o = AuditOrche
 ---
 
 *最后更新: 2026-05-31*
-*版本: v1.1 - Stage 2 Ready*
+*版本: v1.2 - Stage 2.1 多人协作架构补强*

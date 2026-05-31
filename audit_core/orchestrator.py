@@ -21,9 +21,7 @@ from audit_core.registry import AnalyzerRegistry, build_default_registry
 from audit_core.result_merger import merge_findings
 from audit_core.agent_runtime import AgentRuntime
 from ingest.repo_loader import RepoLoader
-from agents.recon_agent import ReconAgent
-from agents.analysis_agent import AnalysisAgent
-from agents.judge_agent import JudgeAgent
+from agents.registry import AgentRegistry, build_default_agent_registry
 
 
 logger = logging.getLogger(__name__)
@@ -56,6 +54,7 @@ class AuditOrchestrator:
     def __init__(
         self,
         registry: AnalyzerRegistry | None = None,
+        agent_registry: AgentRegistry | None = None,
         *,
         llm_client: Any | None = None,
         llm_config: dict[str, Any] | None = None,
@@ -65,6 +64,7 @@ class AuditOrchestrator:
 
         Args:
             registry: Optional analyzer registry (defaults to build_default_registry)
+            agent_registry: Optional agent registry (defaults to build_default_agent_registry)
             llm_client: Optional LLMClientBase instance for LLM-powered analysis.
                         When provided, AnalysisAgent will use this client instead
                         of rule-based fallback.
@@ -74,15 +74,20 @@ class AuditOrchestrator:
         """
         self.registry = registry or build_default_registry()
         self.repo_loader = RepoLoader()
-        self.recon_agent = ReconAgent()
-        self.judge_agent = JudgeAgent()
+
+        # Resolve agent registry and obtain agents from it
+        self.agent_registry = agent_registry or build_default_agent_registry()
+        self.recon_agent = self.agent_registry.get_recon()
+        self.judge_agent = self.agent_registry.get_judge()
 
         # Initialize AgentRuntime for error-isolated execution
         self.agent_runtime = AgentRuntime()
 
         # Resolve LLM client
         resolved_client = self._resolve_llm_client(llm_client, llm_config)
-        self.analysis_agent = AnalysisAgent(llm_client=resolved_client)
+        self.analysis_agent = self.agent_registry.get_analysis()
+        if self.analysis_agent is not None and hasattr(self.analysis_agent, 'set_llm_client'):
+            self.analysis_agent.set_llm_client(resolved_client)
         self._llm_client = resolved_client
 
     @staticmethod
@@ -136,7 +141,8 @@ class AuditOrchestrator:
             client: LLMClientBase instance
         """
         self._llm_client = client
-        self.analysis_agent.set_llm_client(client)
+        if self.analysis_agent is not None and hasattr(self.analysis_agent, 'set_llm_client'):
+            self.analysis_agent.set_llm_client(client)
 
     def get_llm_client(self) -> Any | None:
         """
