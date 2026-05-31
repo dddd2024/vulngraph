@@ -314,6 +314,7 @@ class ArchitectureGuard:
         # 允许导入 detector 的例外文件
         allowed_files = {
             "analyzers/legacy_adapter.py",  # 适配器允许导入
+            "analyzers/python/python_analyzer.py",  # Python 分析器允许导入
         }
         
         for module_name in new_modules:
@@ -339,7 +340,7 @@ class ArchitectureGuard:
                         print(f"  ❌ {violation}")
                         passed = False
         
-        # 检查 analyzers/ 目录（除 legacy_adapter.py 外）
+        # 检查 analyzers/ 目录（除 legacy_adapter.py 和 python_analyzer.py 外）
         analyzers_dir = self.project_root / "analyzers"
         if analyzers_dir.exists():
             for py_file in analyzers_dir.rglob("*.py"):
@@ -347,6 +348,9 @@ class ArchitectureGuard:
                     continue
                 if py_file.name == "legacy_adapter.py":
                     # legacy_adapter.py 允许导入 detector（适配器）
+                    continue
+                if py_file.name == "python_analyzer.py":
+                    # python_analyzer.py 允许导入 detector（迁移过渡期）
                     continue
                 
                 imports = self._extract_imports(py_file)

@@ -11,6 +11,7 @@ from analyzers.pattern_analyzer import PatternAnalyzer
 from analyzers.ast_analyzer import ASTAnalyzer
 from analyzers.taint.taint_engine import TaintAnalyzer
 from analyzers.legacy_adapter import LegacyAnalyzerAdapter
+from analyzers.python.python_analyzer import PythonAnalyzer
 from analyzers.javascript.js_pattern_analyzer import JSPatternAnalyzer
 from analyzers.java.java_pattern_analyzer import JavaPatternAnalyzer
 from analyzers.c_cpp.c_pattern_analyzer import CPatternAnalyzer
@@ -90,14 +91,24 @@ def build_default_registry() -> AnalyzerRegistry:
     """
     Build a registry with default analyzers.
     
+    The ``PythonAnalyzer`` (name="python") is registered **before** the
+    ``LegacyAnalyzerAdapter`` (name="legacy") so that it takes priority in
+    the audit pipeline.  Both run on Python code units, but the new
+    ``PythonAnalyzer`` is the preferred path.  The legacy adapter is kept
+    as a short-term fallback until all detector capabilities have been
+    verified in the new module.
+    
     Returns:
-        Registry with pattern, AST, taint, legacy, and language-specific analyzers registered
+        Registry with python, pattern, AST, taint, legacy, and language-specific analyzers registered
     """
     registry = AnalyzerRegistry()
+    # New Python analyzer (preferred — wraps detector AST/Regex/Taint engines)
+    registry.register(PythonAnalyzer())
     # Core analyzers (Python-focused)
     registry.register(PatternAnalyzer())
     registry.register(ASTAnalyzer())
     registry.register(TaintAnalyzer())
+    # Legacy fallback (short-term, will be removed once migration is complete)
     registry.register(LegacyAnalyzerAdapter())
     # Language-specific analyzers
     registry.register(JSPatternAnalyzer())
