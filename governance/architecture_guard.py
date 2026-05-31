@@ -102,11 +102,6 @@ class ArchitectureGuard:
         """检查禁止的跨模块导入（从 YAML 读取规则）"""
         forbidden_rules = self.boundaries_config.get("forbidden_imports", {})
         
-        # 允许导入 detector 的例外文件
-        allowed_files = {
-            "analyzers/legacy_adapter.py",  # 适配器允许导入 detector
-        }
-        
         passed = True
         
         for module_dir, forbidden_modules in forbidden_rules.items():
@@ -116,11 +111,6 @@ class ArchitectureGuard:
                 
             for py_file in module_path.rglob("*.py"):
                 if py_file.name == "__init__.py":
-                    continue
-                
-                # 检查是否是允许的例外文件
-                relative_path = str(py_file.relative_to(self.project_root))
-                if relative_path in allowed_files:
                     continue
                     
                 imports = self._extract_imports(py_file)

@@ -6,12 +6,12 @@
 
 | 日期 | 事件 |
 |------|------|
-| 2025-05-31 | 迁移 detector 引擎到 analyzers/python/ |
-| 2025-05-31 | 添加 `enable_legacy` 参数，默认禁用 LegacyAnalyzerAdapter |
-| 2025-05-31 | 更新 architecture_guard，仅允许 analyzers/legacy_adapter.py 导入 detector |
-| 2025-05-31 | **删除 detector/ 目录** |
-| 2025-05-31 | **删除 LegacyAnalyzerAdapter** |
-| 2025-05-31 | **删除 enable_legacy 参数** |
+| 2026-05-31 | 迁移 detector 引擎到 analyzers/python/ |
+| 2026-05-31 | 添加 `enable_legacy` 参数，默认禁用 LegacyAnalyzerAdapter |
+| 2026-05-31 | 更新 architecture_guard，仅允许 analyzers/legacy_adapter.py 导入 detector |
+| 2026-05-31 | **删除 detector/ 目录** |
+| 2026-05-31 | **删除 LegacyAnalyzerAdapter** |
+| 2026-05-31 | **删除 enable_legacy 参数** |
 
 ---
 
@@ -99,4 +99,4 @@ registry = build_default_registry()
 ---
 
 **文档状态**: 归档（迁移已完成）
-**最后更新**: 2025-05-31
+**最后更新**: 2026-05-31
