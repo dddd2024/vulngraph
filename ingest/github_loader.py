@@ -51,6 +51,12 @@ class GitHubLoader:
     
     Supports cloning via git or downloading as ZIP archive.
     Automatically manages temporary directories and cleanup.
+
+    Only temporary directories **created by this loader itself** (via the
+    built-in ``_try_clone`` or ``_download_zip`` methods) are tracked for
+    automatic cleanup.  Directories returned by externally injected
+    ``clone_func`` / ``download_func`` callables are **never** deleted by
+    ``cleanup()``, because the loader does not own them.
     """
     
     def __init__(
@@ -63,13 +69,20 @@ class GitHubLoader:
         Initialize the GitHub loader.
         
         Args:
-            clone_func: Optional function to use for cloning (for mocking)
-            download_func: Optional function to use for downloading (for mocking)
-            cleanup: Whether to clean up temporary directories after loading
+            clone_func: Optional function to use for cloning (for mocking).
+                When provided, directories returned by this function are
+                **not** tracked for automatic cleanup.
+            download_func: Optional function to use for downloading (for mocking).
+                When provided, directories returned by this function are
+                **not** tracked for automatic cleanup.
+            cleanup: Whether to clean up owned temporary directories after loading
         """
         self._clone_func = clone_func
         self._download_func = download_func
         self._cleanup = cleanup
+        # Only directories created by the loader itself are tracked here.
+        self._owned_temp_dirs: list[str] = []
+        # Kept for backward compatibility; always a subset of _owned_temp_dirs.
         self._temp_dirs: list[str] = []
     
     def load_repo(
@@ -95,20 +108,27 @@ class GitHubLoader:
         owner, repo = self._parse_github_url(repo_url)
         
         # Try clone first, fall back to ZIP download
+        repo_path: Path
+        is_owned = False  # whether the loader created this directory itself
+
         try:
             if self._clone_func:
                 repo_path = self._clone_func(owner, repo, branch)
             else:
                 repo_path = self._try_clone(owner, repo, branch)
+                is_owned = True
         except Exception:
             # Fall back to ZIP download
             if self._download_func:
                 repo_path = self._download_func(owner, repo, branch)
             else:
                 repo_path = self._download_zip(owner, repo, branch)
+                is_owned = True
         
-        # Track temp directory for cleanup
-        self._temp_dirs.append(str(repo_path))
+        # Track temp directory for cleanup — only if the loader owns it
+        if is_owned:
+            self._owned_temp_dirs.append(str(repo_path))
+            self._temp_dirs.append(str(repo_path))
         
         # Scan for files
         files = self._scan_directory(repo_path)
@@ -116,12 +136,13 @@ class GitHubLoader:
         return repo_path, files
     
     def cleanup(self):
-        """Clean up all temporary directories."""
-        for temp_dir in self._temp_dirs:
+        """Clean up only the temporary directories that this loader created."""
+        for temp_dir in self._owned_temp_dirs:
             try:
                 shutil.rmtree(temp_dir, ignore_errors=True)
             except Exception:
                 pass
+        self._owned_temp_dirs.clear()
         self._temp_dirs.clear()
     
     def _parse_github_url(self, repo_url: str) -> tuple[str, str]:

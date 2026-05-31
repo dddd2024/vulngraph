@@ -118,17 +118,49 @@ class TestGitHubLoader:
         assert repo_path.exists()
         assert len(files) >= 3
     
-    def test_cleanup(self, mock_clone_func):
-        """Test that cleanup removes temporary directories."""
+    def test_cleanup_does_not_delete_external_mock_repo(self, mock_clone_func, mock_repo):
+        """cleanup() must NOT delete directories returned by an injected clone_func."""
         loader = GitHubLoader(clone_func=mock_clone_func, cleanup=True)
-        
+
         repo_path, files = loader.load_repo("https://github.com/test/test_repo")
-        original_path = str(repo_path)
-        
+        assert repo_path == mock_repo
+
         loader.cleanup()
-        
-        # Path should be cleaned up (or at least tracked)
+
+        # The external mock repo must still exist
+        assert mock_repo.exists(), (
+            "cleanup() deleted a directory that belongs to an external mock"
+        )
+        # No owned dirs should have been tracked
+        assert loader._owned_temp_dirs == []
+        assert loader._temp_dirs == []
+
+    def test_cleanup_does_not_delete_external_mock_download(self, mock_download_func, mock_repo):
+        """cleanup() must NOT delete directories returned by an injected download_func."""
+        failing_clone = lambda owner, repo, branch: (_ for _ in ()).throw(RuntimeError("fail"))
+        loader = GitHubLoader(
+            clone_func=failing_clone,
+            download_func=mock_download_func,
+            cleanup=True,
+        )
+
+        repo_path, files = loader.load_repo("https://github.com/test/test_repo")
+        assert repo_path == mock_repo
+
+        loader.cleanup()
+
+        assert mock_repo.exists(), (
+            "cleanup() deleted a directory that belongs to an external mock"
+        )
+        assert loader._owned_temp_dirs == []
+
+    def test_cleanup_clears_tracking_lists(self, mock_clone_func):
+        """After cleanup(), both tracking lists should be empty."""
+        loader = GitHubLoader(clone_func=mock_clone_func, cleanup=True)
+        loader.load_repo("https://github.com/test/test_repo")
+        loader.cleanup()
         assert len(loader._temp_dirs) == 0
+        assert len(loader._owned_temp_dirs) == 0
     
     def test_scan_directory_ignores_dirs(self, mock_repo):
         """Test that scan ignores certain directories."""
