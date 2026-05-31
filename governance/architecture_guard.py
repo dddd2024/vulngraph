@@ -69,6 +69,7 @@ class ArchitectureGuard:
             ("legacy.py 文件检查", self.check_legacy_file_exists),
             ("全局禁止导入检查", self.check_forbidden_imports_globally),
             ("detector 导入检查", self.check_detector_imports),
+            ("detector 目录检查", self.check_detector_directory_exists),
         ]
         
         all_passed = True
@@ -302,68 +303,41 @@ class ArchitectureGuard:
         return passed
     
     def check_detector_imports(self) -> bool:
-        """检查新模块是否导入旧 detector pipeline（除 legacy_adapter.py 外）"""
+        """检查是否导入已删除的 detector 模块"""
         passed = True
         
-        # 需要检查的新模块目录
-        new_modules = [
-            "audit_core", "ingest", "agents", "evidence", 
-            "knowledge", "report", "api"
-        ]
-        
-        # 允许导入 detector 的例外文件
-        allowed_files = {
-            "analyzers/legacy_adapter.py",  # 适配器允许导入
-            "analyzers/python/python_analyzer.py",  # Python 分析器允许导入
-        }
-        
-        for module_name in new_modules:
-            module_dir = self.project_root / module_name
-            if not module_dir.exists():
+        # 检查所有 Python 文件（无例外）
+        for py_file in self.project_root.rglob("*.py"):
+            if py_file.name == "__init__.py":
                 continue
             
-            for py_file in module_dir.rglob("*.py"):
-                if py_file.name == "__init__.py":
-                    continue
-                
-                # 检查是否是允许的例外文件
-                relative_path = str(py_file.relative_to(self.project_root))
-                if relative_path in allowed_files:
-                    continue
-                
-                imports = self._extract_imports(py_file)
-                
-                for imp in imports:
-                    if imp == "detector" or imp.startswith("detector."):
-                        violation = f"{py_file}: 新模块禁止导入旧 detector pipeline '{imp}'（仅 analyzers/legacy_adapter.py 允许）"
-                        self.violations.append(violation)
-                        print(f"  ❌ {violation}")
-                        passed = False
-        
-        # 检查 analyzers/ 目录（除 legacy_adapter.py 和 python_analyzer.py 外）
-        analyzers_dir = self.project_root / "analyzers"
-        if analyzers_dir.exists():
-            for py_file in analyzers_dir.rglob("*.py"):
-                if py_file.name == "__init__.py":
-                    continue
-                if py_file.name == "legacy_adapter.py":
-                    # legacy_adapter.py 允许导入 detector（适配器）
-                    continue
-                if py_file.name == "python_analyzer.py":
-                    # python_analyzer.py 允许导入 detector（迁移过渡期）
-                    continue
-                
-                imports = self._extract_imports(py_file)
-                
-                for imp in imports:
-                    if imp == "detector" or imp.startswith("detector."):
-                        violation = f"{py_file}: 新代码禁止导入旧 detector pipeline '{imp}'（仅 legacy_adapter.py 允许）"
-                        self.violations.append(violation)
-                        print(f"  ❌ {violation}")
-                        passed = False
+            imports = self._extract_imports(py_file)
+            
+            for imp in imports:
+                if imp == "detector" or imp.startswith("detector."):
+                    violation = f"{py_file}: detector 模块已删除，禁止导入 '{imp}'"
+                    self.violations.append(violation)
+                    print(f"  ❌ {violation}")
+                    passed = False
         
         if passed:
-            print("  ✅ 新模块未导入旧 detector pipeline（仅 legacy_adapter.py 允许）")
+            print("  ✅ 未发现 detector 导入（模块已删除）")
+        
+        return passed
+    
+    def check_detector_directory_exists(self) -> bool:
+        """检查 detector/ 目录是否已删除"""
+        passed = True
+        
+        detector_dir = self.project_root / "detector"
+        if detector_dir.exists():
+            violation = f"{detector_dir}: detector/ 目录已迁移到 analyzers/python/，请删除旧目录"
+            self.violations.append(violation)
+            print(f"  ❌ {violation}")
+            passed = False
+        
+        if passed:
+            print("  ✅ detector/ 目录已删除")
         
         return passed
     

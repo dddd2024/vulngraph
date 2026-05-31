@@ -59,7 +59,7 @@ EvidenceBundle → knowledge → report → AuditResult
 6. **禁止** 删除或修改 `/scan` 返回的必需字段
 7. **禁止** 基于 `main.py`、`analysis_engine.py`、`api/routes/legacy.py` 开发新功能
 8. **禁止** 新代码导入 `analysis_engine` 或 `main` 模块
-9. **禁止** 新功能接入旧 `detector/` pipeline
+9. **禁止** 导入已删除的 `detector/` 模块
 
 ### 阶段限制（第一阶段）
 1. **不要** 实现新的漏洞检测能力（保持现有 PatternAnalyzer 即可）

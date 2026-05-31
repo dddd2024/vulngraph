@@ -42,7 +42,6 @@ class AuditOrchestrator:
         self,
         registry: AnalyzerRegistry | None = None,
         *,
-        enable_legacy: bool = False,
         llm_client: Any | None = None,
         llm_config: dict[str, Any] | None = None,
     ):
@@ -51,8 +50,6 @@ class AuditOrchestrator:
         
         Args:
             registry: Optional analyzer registry (defaults to build_default_registry)
-            enable_legacy: If True, include LegacyAnalyzerAdapter in the default
-                           registry.  Ignored when *registry* is explicitly provided.
             llm_client: Optional LLMClientBase instance for LLM-powered analysis.
                         When provided, AnalysisAgent will use this client instead
                         of rule-based fallback.
@@ -60,7 +57,7 @@ class AuditOrchestrator:
                         Example: {"provider": "mock"} or {"provider": "openai", "api_key": "..."}
                         Ignored if llm_client is directly provided.
         """
-        self.registry = registry or build_default_registry(enable_legacy=enable_legacy)
+        self.registry = registry or build_default_registry()
         self.repo_loader = RepoLoader()
         self.recon_agent = ReconAgent()
         self.judge_agent = JudgeAgent()

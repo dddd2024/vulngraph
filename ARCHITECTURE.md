@@ -192,7 +192,7 @@ Static analysis engines.
 - **pattern_analyzer.py**: Regex-based detection
 - **ast_analyzer.py**: AST-based detection
 - **taint/**: Taint analysis engine
-- **legacy_adapter.py**: Legacy detector integration
+- **python/**: Python analyzer (AST/Regex/Taint engines)
 - **javascript/**: JavaScript/TypeScript analyzers
 - **java/**: Java analyzers
 - **c_cpp/**: C/C++ analyzers

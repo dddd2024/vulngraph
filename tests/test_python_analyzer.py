@@ -417,26 +417,9 @@ class TestRegistryIntegration:
         assert isinstance(analyzer, PythonAnalyzer)
 
     def test_default_registry_excludes_legacy(self):
-        """Default registry should NOT contain LegacyAnalyzerAdapter."""
+        """Default registry should NOT contain legacy analyzer."""
         registry = build_default_registry()
         assert registry.get("legacy") is None
-
-    def test_enable_legacy_includes_legacy(self):
-        """enable_legacy=True should include LegacyAnalyzerAdapter."""
-        registry = build_default_registry(enable_legacy=True)
-        assert registry.get("legacy") is not None
-
-    def test_enable_legacy_python_before_legacy(self):
-        """PythonAnalyzer should appear before LegacyAnalyzerAdapter in the list."""
-        registry = build_default_registry(enable_legacy=True)
-        analyzers = registry.get_analyzers()
-        names = [a.name for a in analyzers]
-        python_idx = names.index("python")
-        legacy_idx = names.index("legacy")
-        assert python_idx < legacy_idx, (
-            f"PythonAnalyzer (idx={python_idx}) should be registered before "
-            f"LegacyAnalyzerAdapter (idx={legacy_idx})"
-        )
 
     def test_registry_get_for_language(self):
         """get_analyzers_for_language('python') should include PythonAnalyzer."""

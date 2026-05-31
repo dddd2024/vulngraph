@@ -10,7 +10,6 @@ from analyzers.base import BaseAnalyzer
 from analyzers.pattern_analyzer import PatternAnalyzer
 from analyzers.ast_analyzer import ASTAnalyzer
 from analyzers.taint.taint_engine import TaintAnalyzer
-from analyzers.legacy_adapter import LegacyAnalyzerAdapter
 from analyzers.python.python_analyzer import PythonAnalyzer
 from analyzers.javascript.js_pattern_analyzer import JSPatternAnalyzer
 from analyzers.java.java_pattern_analyzer import JavaPatternAnalyzer
@@ -87,35 +86,24 @@ class AnalyzerRegistry:
         self._analyzers.clear()
 
 
-def build_default_registry(*, enable_legacy: bool = False) -> AnalyzerRegistry:
+def build_default_registry() -> AnalyzerRegistry:
     """
     Build a registry with default analyzers.
     
-    The ``PythonAnalyzer`` (name="python") is the primary Python analyzer.
-    The ``LegacyAnalyzerAdapter`` (name="legacy") is **not** registered by
-    default; pass ``enable_legacy=True`` to include it as a fallback.
-
-    Parameters
-    ----------
-    enable_legacy:
-        If ``True``, also register ``LegacyAnalyzerAdapter``.  Defaults to
-        ``False`` — new code should not depend on the legacy path.
+    The ``PythonAnalyzer`` (name="python") is the primary Python analyzer,
+    backed by the analyzers/python/ engines (AST, Regex, Taint).
 
     Returns:
         Registry with python, pattern, AST, taint, and language-specific
-        analyzers registered.  Legacy adapter is only included when
-        ``enable_legacy=True``.
+        analyzers registered.
     """
     registry = AnalyzerRegistry()
-    # New Python analyzer (preferred — wraps AST/Regex/Taint engines)
+    # Python analyzer (AST/Regex/Taint engines)
     registry.register(PythonAnalyzer())
     # Core analyzers (Python-focused)
     registry.register(PatternAnalyzer())
     registry.register(ASTAnalyzer())
     registry.register(TaintAnalyzer())
-    # Legacy fallback (only when explicitly requested)
-    if enable_legacy:
-        registry.register(LegacyAnalyzerAdapter())
     # Language-specific analyzers
     registry.register(JSPatternAnalyzer())
     registry.register(JavaPatternAnalyzer())

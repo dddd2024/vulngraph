@@ -1,8 +1,0 @@
-rules:
-  - id: sql-injection
-    message: Potential SQL injection
-    severity: ERROR
-    languages: [python]
-    patterns:
-      - pattern: $CURSOR.execute("..." + $X)
-
