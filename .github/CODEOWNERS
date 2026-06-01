@@ -2,78 +2,55 @@
 #
 # 每个目录指定负责人，确保 PR 审查时自动请求对应成员。
 # 四人分工：
-# - 成员 1: Core & Orchestrator (audit_core/, ingest/, governance/)
-# - 成员 2: Analyzer & Taint (analyzers/, parser/)
-# - 成员 3: Agent & Knowledge (agents/, knowledge/, evidence/)
-# - 成员 4: API, UI & Report (api/, report/, ui/)
+# - @core-owner: Core & Orchestrator (audit_core/, ingest/, governance/, contracts/)
+# - @analyzer-owner: Analyzer & Taint (analyzers/)
+# - @agent-owner: Agent & Knowledge (agents/, evidence/, knowledge/)
+# - @api-ui-owner: API, UI & Report (api/, report/, ui/)
 #
-# ⚠️ 重要：@member1/@member2/@member3/@member4 是占位符！
+# ⚠️ 重要：@core-owner/@analyzer-owner/@agent-owner/@api-ui-owner 是占位符！
 #    使用前必须替换为真实的 GitHub 用户名或 GitHub Team。
-#    替换示例：将 @member1 替换为 @actual_username
 #
 # 公共契约需要全员审查。
 
 # 公共契约 - 全员审查
-/audit_core/models.py                    @member1 @member2 @member3 @member4
-/contracts/                              @member1 @member2 @member3 @member4
-/governance/public_contracts.yaml        @member1 @member2 @member3 @member4
-/governance/module_boundaries.yaml       @member1 @member2 @member3 @member4
+/audit_core/models.py                    @core-owner @analyzer-owner @agent-owner @api-ui-owner
+/contracts/                              @core-owner @analyzer-owner @agent-owner @api-ui-owner
+/governance/public_contracts.yaml        @core-owner @analyzer-owner @agent-owner @api-ui-owner
+/governance/module_boundaries.yaml       @core-owner @analyzer-owner @agent-owner @api-ui-owner
 
-# 成员 1: Core & Orchestrator
-/audit_core/                             @member1
-/audit_core/pipeline.py                  @member1
-/audit_core/stages/                      @member1
-/audit_core/orchestrator.py              @member1
-/audit_core/registry.py                  @member1
-/audit_core/agent_runtime.py             @member1
-/audit_core/result_merger.py             @member1
-/audit_core/scoring.py                   @member1
-/ingest/                                 @member1
-/governance/                             @member1
+# @core-owner: Core & Orchestrator
+/audit_core/                             @core-owner
+/ingest/                                 @core-owner
+/governance/                             @core-owner
+/contracts/                              @core-owner
+/AGENTS.md                               @core-owner
+/ARCHITECTURE.md                         @core-owner
+/AI_COLLABORATION.md                     @core-owner
+/TASKS/                                  @core-owner
 
-# 成员 2: Analyzer & Taint
-/analyzers/                              @member2
-/analyzers/python/                       @member2
-/analyzers/java/                         @member2
-/analyzers/javascript/                   @member2
-/analyzers/c_cpp/                        @member2
-/analyzers/taint/                        @member2
-/parser/                                 @member2
+# @analyzer-owner: Analyzer & Taint
+/analyzers/                              @analyzer-owner
 
-# 成员 3: Agent & Knowledge
-/agents/                                 @member3
-/agents/recon/                           @member3
-/agents/analysis/                        @member3
-/agents/judge/                           @member3
-/agents/registry.py                      @member3
-/agents/register_builtin.py              @member3
-/knowledge/                              @member3
-/evidence/                               @member3
-/llm/                                    @member3
+# @agent-owner: Agent & Knowledge
+/agents/                                 @agent-owner
+/evidence/                               @agent-owner
+/knowledge/                              @agent-owner
 
-# 成员 4: API, UI & Report
-/api/                                    @member4
-/api/routes/                             @member4
-/api/view_models.py                      @member4
-/api/schemas.py                          @member4
-/api/server.py                           @member4
-/api/state.py                            @member4
-/report/                                 @member4
-/ui/                                     @member4
+# @api-ui-owner: API, UI & Report
+/api/                                    @api-ui-owner
+/report/                                 @api-ui-owner
+/ui/                                     @api-ui-owner
 
 # 测试 - 按对应模块审查
-/tests/test_core/                        @member1
-/tests/test_analyzers/                   @member2
-/tests/test_agents/                      @member3
-/tests/test_api/                         @member4
-/tests/test_report/                      @member4
-/tests/contracts/                        @member1 @member2 @member3 @member4
+/tests/test_core/                        @core-owner
+/tests/test_ingest/                      @core-owner
+/tests/test_analyzers/                   @analyzer-owner
+/tests/test_agents/                      @agent-owner
+/tests/test_evidence/                   @agent-owner
+/tests/test_knowledge/                  @agent-owner
+/tests/test_api/                         @api-ui-owner
+/tests/test_report/                      @api-ui-owner
+/tests/contracts/                        @core-owner @analyzer-owner @agent-owner @api-ui-owner
 
-# 文档 - 全员可审查
-/AGENTS.md                               @member1 @member2 @member3 @member4
-/AI_COLLABORATION.md                     @member1 @member2 @member3 @member4
-/ARCHITECTURE.md                         @member1 @member2 @member3 @member4
-/TASKS/                                  @member1 @member2 @member3 @member4
-
-# CI/CD - 成员 1 负责
-/.github/                                @member1
+# CI/CD - @core-owner 负责
+/.github/                                @core-owner

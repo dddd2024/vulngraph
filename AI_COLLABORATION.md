@@ -194,10 +194,10 @@ AGENTS.md (根目录)
    python -m pytest tests/contracts/ -v
 
    # 模块测试（按角色选择）
-   # Core: python -m pytest tests/test_core/ tests/test_ingest/ -v
-   # Analyzer: python -m pytest tests/test_analyzers/ -v
-   # Agent: python -m pytest tests/test_agents/ tests/test_evidence/ tests/test_knowledge/ -v
-   # API: python -m pytest tests/test_api/ tests/test_report/ -v
+   # Core: python -m pytest tests/test_audit_core.py tests/test_ingest.py tests/test_core/test_pipeline.py -v
+   # Analyzer: python -m pytest tests/test_python_analyzer.py tests/test_js_analyzer.py tests/test_java_analyzer.py tests/test_c_cpp_analyzer.py tests/test_analyzers/test_smoke.py tests/test_analyzers/test_taint_adapter.py -v
+   # Agent: python -m pytest tests/test_llm_client_rule_mode.py tests/test_knowledge_graph.py tests/test_recon_agent.py tests/test_analysis_agent_with_mock_llm.py tests/test_evidence_builder.py tests/test_agents/test_smoke.py -v
+   # API: python -m pytest tests/test_scan_api.py tests/contracts/test_scan_response_contract.py tests/test_api/test_smoke.py tests/test_report/test_smoke.py -v
    ```
 
 4. **填写 PR 描述**
@@ -247,16 +247,16 @@ python -m pytest tests/contracts/ -v
 
 ```bash
 # 成员 1: Core Orchestrator（audit_core/, ingest/）
-python -m pytest tests/test_core/ tests/test_ingest/ -v
+python -m pytest tests/test_audit_core.py tests/test_ingest.py tests/test_core/test_pipeline.py -v
 
 # 成员 2: Analyzer & Taint Engine（analyzers/）
-python -m pytest tests/test_analyzers/ -v
+python -m pytest tests/test_python_analyzer.py tests/test_js_analyzer.py tests/test_java_analyzer.py tests/test_c_cpp_analyzer.py tests/test_analyzers/test_smoke.py tests/test_analyzers/test_taint_adapter.py -v
 
 # 成员 3: Agent & Knowledge（agents/, evidence/, knowledge/）
-python -m pytest tests/test_agents/ tests/test_evidence/ tests/test_knowledge/ -v
+python -m pytest tests/test_llm_client_rule_mode.py tests/test_knowledge_graph.py tests/test_recon_agent.py tests/test_analysis_agent_with_mock_llm.py tests/test_evidence_builder.py tests/test_agents/test_smoke.py -v
 
 # 成员 4: API / Report / UI（api/, report/）
-python -m pytest tests/test_api/ tests/test_report/ -v
+python -m pytest tests/test_scan_api.py tests/contracts/test_scan_response_contract.py tests/test_api/test_smoke.py tests/test_report/test_smoke.py -v
 ```
 
 ### 集成测试（建议合并前运行）
@@ -410,10 +410,10 @@ python governance/architecture_guard.py
 python -m pytest tests/contracts/ -v
 
 # 模块测试（按角色）
-python -m pytest tests/test_core/ tests/test_ingest/ -v          # Core
-python -m pytest tests/test_analyzers/ -v                        # Analyzer
-python -m pytest tests/test_agents/ tests/test_evidence/ tests/test_knowledge/ -v  # Agent
-python -m pytest tests/test_api/ tests/test_report/ -v           # API
+python -m pytest tests/test_audit_core.py tests/test_ingest.py tests/test_core/test_pipeline.py -v          # Core
+python -m pytest tests/test_python_analyzer.py tests/test_js_analyzer.py tests/test_java_analyzer.py tests/test_c_cpp_analyzer.py tests/test_analyzers/test_smoke.py tests/test_analyzers/test_taint_adapter.py -v  # Analyzer
+python -m pytest tests/test_llm_client_rule_mode.py tests/test_knowledge_graph.py tests/test_recon_agent.py tests/test_analysis_agent_with_mock_llm.py tests/test_evidence_builder.py tests/test_agents/test_smoke.py -v  # Agent
+python -m pytest tests/test_scan_api.py tests/contracts/test_scan_response_contract.py tests/test_api/test_smoke.py tests/test_report/test_smoke.py -v  # API
 
 # 集成测试
 python -m pytest tests/test_integration/ -v
@@ -436,11 +436,20 @@ contracts/                   # JSON Schema
 tests/                       # 测试目录
 tests/README.md              # 测试结构说明
 tests/contracts/             # 契约测试
-tests/test_core/             # Core 测试
-tests/test_analyzers/        # Analyzer 测试
-tests/test_agents/           # Agent 测试
-tests/test_api/              # API 测试
+tests/test_core/             # Core 模块化测试
+tests/test_analyzers/        # Analyzer 模块化测试
+tests/test_agents/           # Agent 模块化测试
+tests/test_api/              # API 模块化测试
 tests/test_integration/      # 集成测试
+tests/test_audit_core.py     # Core 平铺测试
+tests/test_ingest.py         # Ingest 平铺测试
+tests/test_python_analyzer.py # Python Analyzer 平铺测试
+tests/test_js_analyzer.py    # JS Analyzer 平铺测试
+tests/test_java_analyzer.py  # Java Analyzer 平铺测试
+tests/test_c_cpp_analyzer.py  # C/C++ Analyzer 平铺测试
+tests/test_scan_api.py        # API 平铺测试
+tests/test_knowledge_graph.py # Knowledge 平铺测试
+tests/test_llm_client_rule_mode.py # LLM Client 平铺测试
 ```
 
 ### 联系人
@@ -471,5 +480,5 @@ tests/test_integration/      # 集成测试
 
 ---
 
-*最后更新: 2026-05-31*
-*版本: v1.2 - Stage 2.1 多人协作架构补强*
+*最后更新: 2026-06-01*
+*版本: v1.3 - Stage 2.2 协作治理补强（测试路径修正、CI 增强）*

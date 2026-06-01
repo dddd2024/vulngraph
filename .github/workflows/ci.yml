@@ -1,14 +1,13 @@
-# Architecture Guard CI
+# VulnPatch CI
 #
-# Runs on every push and pull request to enforce:
-# 1. Architecture guard checks (module boundaries, forbidden imports)
-# 2. Contract tests (public API stability)
-# 3. Module smoke tests (basic functionality)
+# 在每次 push 和 pull_request 时触发，确保：
+# 1. 架构守卫检查（模块边界、禁止导入）
+# 2. 契约测试（公共 API 稳定性）
+# 3. 完整测试套件
 #
-# This ensures that all team members遵守协作边界，
-# 防止跨模块修改破坏架构契约。
+# 确保所有团队成员遵守协作边界，防止跨模块修改破坏架构契约。
 
-name: Architecture Guard
+name: VulnPatch CI
 
 on:
   push:
@@ -42,12 +41,12 @@ jobs:
         run: |
           python -m pytest tests/contracts/ -v --tb=short
 
-      - name: Run Module Smoke Tests
+      - name: Run Full Test Suite
         run: |
-          python -m pytest tests/test_core/test_smoke.py tests/test_core/test_pipeline.py tests/test_agents/test_smoke.py tests/test_analyzers/test_smoke.py tests/test_api/test_smoke.py tests/test_report/test_smoke.py -v --tb=short
+          python -m pytest tests/ -v --tb=short
 
       - name: Summary
         if: always()
         run: |
-          echo "=== Architecture Guard CI Summary ==="
+          echo "=== VulnPatch CI Summary ==="
           echo "All checks completed. See above for details."

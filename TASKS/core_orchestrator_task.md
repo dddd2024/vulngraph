@@ -59,8 +59,7 @@ python -m pytest tests/contracts/test_models_contract.py -v
 python governance/architecture_guard.py
 
 # 3. 单元测试
-python -m pytest tests/test_audit_core.py -v
-python -m pytest tests/test_ingest.py -v
+python -m pytest tests/test_audit_core.py tests/test_ingest.py tests/test_core/test_pipeline.py -v
 
 # 4. 集成测试
 python -c "from audit_core.orchestrator import AuditOrchestrator; o = AuditOrchestrator(); print(o.scan_code('def test(): pass', 'python'))"

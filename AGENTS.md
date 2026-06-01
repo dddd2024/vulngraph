@@ -213,7 +213,12 @@ EvidenceBundle → knowledge → report → AuditResult
 
 **允许修改**:
 - `analyzers/*.py`
+- `analyzers/python/*.py`
+- `analyzers/javascript/*.py`
+- `analyzers/java/*.py`
+- `analyzers/c_cpp/*.py`
 - `analyzers/taint/*.py`
+- `analyzers/*/register.py`
 - `tests/test_analyzers*.py`
 
 **禁止**:
@@ -298,11 +303,14 @@ python -m pytest tests/contracts/ -v
 # 2. 模块边界检查（所有人）
 python governance/architecture_guard.py
 
-# 3. 自己模块的测试
-python -m pytest tests/test_<your_module>/ -v
+# 3. 自己模块的测试（按角色选择具体文件）
+# Core: python -m pytest tests/test_audit_core.py tests/test_ingest.py tests/test_core/test_pipeline.py -v
+# Analyzer: python -m pytest tests/test_python_analyzer.py tests/test_js_analyzer.py tests/test_java_analyzer.py tests/test_c_cpp_analyzer.py tests/test_analyzers/test_smoke.py tests/test_analyzers/test_taint_adapter.py -v
+# Agent: python -m pytest tests/test_llm_client_rule_mode.py tests/test_knowledge_graph.py tests/test_recon_agent.py tests/test_analysis_agent_with_mock_llm.py tests/test_evidence_builder.py tests/test_agents/test_smoke.py -v
+# API: python -m pytest tests/test_scan_api.py tests/contracts/test_scan_response_contract.py tests/test_api/test_smoke.py tests/test_report/test_smoke.py -v
 
 # 4. 集成测试（修改 orchestrator 时）
-python -m pytest tests/test_integration.py -v
+python -m pytest tests/test_integration/ -v
 ```
 
 ### 测试通过标准
@@ -426,5 +434,5 @@ python -c "from audit_core.orchestrator import AuditOrchestrator; o = AuditOrche
 
 ---
 
-*最后更新: 2026-05-31*
-*版本: v1.2 - Stage 2.1 多人协作架构补强*
+*最后更新: 2026-06-01*
+*版本: v1.3 - Stage 2.2 协作治理补强（测试路径修正、CI 增强）*

@@ -91,12 +91,11 @@ analyzer = PatternAnalyzer()
 # 1. 模块边界检查
 python governance/architecture_guard.py
 
-# 2. 单元测试
-python -m pytest tests/test_api.py -v
-python -m pytest tests/test_report.py -v
+# 2. 契约测试（所有人必跑）
+python -m pytest tests/contracts/ -v
 
-# 3. 契约测试（确保 /scan 返回字段完整）
-python -m pytest tests/contracts/test_scan_response_contract.py -v
+# 3. 单元测试
+python -m pytest tests/test_scan_api.py tests/contracts/test_scan_response_contract.py tests/test_api/test_smoke.py tests/test_report/test_smoke.py -v
 
 # 4. 端到端测试
 python -c "
@@ -156,9 +155,8 @@ print(f'Agent logs: {len(result.agent_logs)}')
 
 【测试要求】
 - 运行 python governance/architecture_guard.py
-- 运行 python -m pytest tests/test_api.py -v
-- 运行 python -m pytest tests/test_report.py -v
-- 运行 python -m pytest tests/contracts/test_scan_response_contract.py -v
+- 运行 python -m pytest tests/contracts/ -v
+- 运行 python -m pytest tests/test_scan_api.py tests/contracts/test_scan_response_contract.py tests/test_api/test_smoke.py tests/test_report/test_smoke.py -v
 ```
 
 ## 常见问题

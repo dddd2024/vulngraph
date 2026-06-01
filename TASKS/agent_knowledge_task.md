@@ -107,12 +107,13 @@ Agent & Knowledge 模块产出以下结构化对象：
 # 1. 模块边界检查
 python governance/architecture_guard.py
 
-# 2. 单元测试
-python -m pytest tests/test_agents.py -v
-python -m pytest tests/test_evidence.py -v
-python -m pytest tests/test_knowledge.py -v
+# 2. 契约测试（所有人必跑）
+python -m pytest tests/contracts/ -v
 
-# 3. 端到端测试
+# 3. 单元测试
+python -m pytest tests/test_llm_client_rule_mode.py tests/test_knowledge_graph.py tests/test_recon_agent.py tests/test_analysis_agent_with_mock_llm.py tests/test_evidence_builder.py tests/test_agents/test_smoke.py -v
+
+# 4. 端到端测试
 python -c "
 from audit_core.orchestrator import AuditOrchestrator
 o = AuditOrchestrator()
@@ -165,9 +166,8 @@ print(f'Evidence: {len(result.evidence)}')
 
 【测试要求】
 - 运行 python governance/architecture_guard.py
-- 运行 python -m pytest tests/test_agents.py -v
-- 运行 python -m pytest tests/test_evidence.py -v
-- 运行 python -m pytest tests/test_knowledge.py -v
+- 运行 python -m pytest tests/contracts/ -v
+- 运行 python -m pytest tests/test_llm_client_rule_mode.py tests/test_knowledge_graph.py tests/test_recon_agent.py tests/test_analysis_agent_with_mock_llm.py tests/test_evidence_builder.py tests/test_agents/test_smoke.py -v
 ```
 
 ## 常见问题

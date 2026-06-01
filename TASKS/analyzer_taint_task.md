@@ -4,13 +4,26 @@
 
 - `analyzers/` - 静态分析器
 - `analyzers/taint/` - 污点分析引擎
+- `analyzers/python/` - Python 分析器
+- `analyzers/javascript/` - JavaScript/TypeScript 分析器
+- `analyzers/java/` - Java 分析器
+- `analyzers/c_cpp/` - C/C++ 分析器
 
 ## 允许修改范围
 
 ### 可以修改的文件
 - `analyzers/*.py`
+- `analyzers/python/*.py`
+- `analyzers/javascript/*.py`
+- `analyzers/java/*.py`
+- `analyzers/c_cpp/*.py`
 - `analyzers/taint/*.py`
+- `analyzers/*/register.py`
 - `tests/test_analyzers*.py`
+- `tests/test_python_analyzer.py`
+- `tests/test_js_analyzer.py`
+- `tests/test_java_analyzer.py`
+- `tests/test_c_cpp_analyzer.py`
 
 ### 可以添加的内容
 - 新的检测规则
@@ -46,10 +59,13 @@
 # 1. 模块边界检查
 python governance/architecture_guard.py
 
-# 2. 单元测试
-python -m pytest tests/test_analyzers.py -v
+# 2. 契约测试（所有人必跑）
+python -m pytest tests/contracts/ -v
 
-# 3. 端到端测试
+# 3. 单元测试
+python -m pytest tests/test_python_analyzer.py tests/test_js_analyzer.py tests/test_java_analyzer.py tests/test_c_cpp_analyzer.py tests/test_analyzers/test_smoke.py tests/test_analyzers/test_taint_adapter.py -v
+
+# 4. 端到端测试
 python -c "
 from audit_core.orchestrator import AuditOrchestrator
 o = AuditOrchestrator()
