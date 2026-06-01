@@ -1,0 +1,94 @@
+# CODEOWNERS - VulnPatch 多人协作边界定义
+#
+# 每个目录指定负责人，确保 PR 审查时自动请求对应成员。
+# 四人分工：
+# - @gaolinghuaqianling: Core & Orchestrator (audit_core/, ingest/, governance/, contracts/)
+# - @Asuka-star-art: Analyzer & Taint (analyzers/)
+# - @dddd2024: Agent & Knowledge (agents/, evidence/, knowledge/)
+# - @nO-bot19: API, UI & Report (api/, report/, ui/)
+#
+
+# ============================================
+# @gaolinghuaqianling: Core & Orchestrator
+# ============================================
+/audit_core/                             @gaolinghuaqianling
+/ingest/                                 @gaolinghuaqianling
+/governance/                             @gaolinghuaqianling
+/contracts/                              @gaolinghuaqianling
+/TASKS/                                  @gaolinghuaqianling
+
+# ============================================
+# @Asuka-star-art: Analyzer & Taint
+# ============================================
+/analyzers/                              @Asuka-star-art
+
+# ============================================
+# @dddd2024: Agent & Knowledge
+# ============================================
+/agents/                                 @dddd2024
+/evidence/                               @dddd2024
+/knowledge/                              @dddd2024
+
+# ============================================
+# @nO-bot19: API, UI & Report
+# ============================================
+/api/                                    @nO-bot19
+/report/                                 @nO-bot19
+/ui/                                     @nO-bot19
+
+# ============================================
+# 测试目录 - 按对应模块审查
+# ============================================
+/tests/test_core/                        @gaolinghuaqianling
+/tests/test_ingest/                       @gaolinghuaqianling
+/tests/test_analyzers/                    @Asuka-star-art
+/tests/test_agents/                       @dddd2024
+/tests/test_evidence/                     @dddd2024
+/tests/test_knowledge/                    @dddd2024
+/tests/test_api/                          @nO-bot19
+/tests/test_report/                       @nO-bot19
+/tests/contracts/                         @gaolinghuaqianling @Asuka-star-art @dddd2024 @nO-bot19
+
+# ============================================
+# 根目录旧测试文件 - 按对应模块审查
+# ============================================
+/tests/test_audit_core.py                 @gaolinghuaqianling
+/tests/test_ingest.py                     @gaolinghuaqianling
+/tests/test_python_analyzer.py            @Asuka-star-art
+/tests/test_js_analyzer.py                @Asuka-star-art
+/tests/test_java_analyzer.py              @Asuka-star-art
+/tests/test_c_cpp_analyzer.py             @Asuka-star-art
+/tests/test_llm_client_rule_mode.py       @dddd2024
+/tests/test_knowledge_graph.py            @dddd2024
+/tests/test_recon_agent.py                @dddd2024
+/tests/test_analysis_agent_with_mock_llm.py @dddd2024
+/tests/test_evidence_builder.py           @dddd2024
+/tests/test_scan_api.py                   @nO-bot19
+
+# ============================================
+# CI/CD - @gaolinghuaqianling 负责
+# ============================================
+/.github/                                @gaolinghuaqianling
+
+# ============================================
+# 公共契约规则 - 必须放在文件底部
+# ============================================
+# ⚠️ 重要：CODEOWNERS 采用最后匹配规则优先（last match wins）策略。
+#    因此公共契约规则必须放在文件底部，才能覆盖前面的目录规则。
+#    例如：/audit_core/ 规则在前，/audit_core/models.py 规则在后，
+#    后者会生效，确保 models.py 被分配给所有 owner 审查。
+
+# 核心数据模型
+/audit_core/models.py                    @gaolinghuaqianling @Asuka-star-art @dddd2024 @nO-bot19
+
+# 契约定义
+/contracts/                              @gaolinghuaqianling @Asuka-star-art @dddd2024 @nO-bot19
+
+# 治理文件
+/governance/public_contracts.yaml        @gaolinghuaqianling @Asuka-star-art @dddd2024 @nO-bot19
+/governance/module_boundaries.yaml       @gaolinghuaqianling @Asuka-star-art @dddd2024 @nO-bot19
+
+# 架构文档
+/AGENTS.md                               @gaolinghuaqianling @Asuka-star-art @dddd2024 @nO-bot19
+/ARCHITECTURE.md                         @gaolinghuaqianling @Asuka-star-art @dddd2024 @nO-bot19
+/AI_COLLABORATION.md                     @gaolinghuaqianling @Asuka-star-art @dddd2024 @nO-bot19
