@@ -2,77 +2,73 @@
 #
 # 每个目录指定负责人，确保 PR 审查时自动请求对应成员。
 # 四人分工：
-# - @core-owner: Core & Orchestrator (audit_core/, ingest/, governance/, contracts/)
-# - @analyzer-owner: Analyzer & Taint (analyzers/)
-# - @agent-owner: Agent & Knowledge (agents/, evidence/, knowledge/)
-# - @api-ui-owner: API, UI & Report (api/, report/, ui/)
-#
-# ⚠️ 重要：@core-owner/@analyzer-owner/@agent-owner/@api-ui-owner 是占位符！
-#    使用前必须替换为真实的 GitHub 用户名或 GitHub Team，否则 GitHub 不会自动分配 code owner。
-#    替换示例：将 @core-owner 替换为 @actual_username
+# - @gaolinghuaqianling: Core & Orchestrator (audit_core/, ingest/, governance/, contracts/)
+# - @Asuka-star-art: Analyzer & Taint (analyzers/)
+# - @dddd2024: Agent & Knowledge (agents/, evidence/, knowledge/)
+# - @nO-bot19: API, UI & Report (api/, report/, ui/)
 #
 
 # ============================================
-# @core-owner: Core & Orchestrator
+# @gaolinghuaqianling: Core & Orchestrator
 # ============================================
-/audit_core/                             @core-owner
-/ingest/                                 @core-owner
-/governance/                             @core-owner
-/contracts/                              @core-owner
-/TASKS/                                  @core-owner
+/audit_core/                             @gaolinghuaqianling
+/ingest/                                 @gaolinghuaqianling
+/governance/                             @gaolinghuaqianling
+/contracts/                              @gaolinghuaqianling
+/TASKS/                                  @gaolinghuaqianling
 
 # ============================================
-# @analyzer-owner: Analyzer & Taint
+# @Asuka-star-art: Analyzer & Taint
 # ============================================
-/analyzers/                              @analyzer-owner
+/analyzers/                              @Asuka-star-art
 
 # ============================================
-# @agent-owner: Agent & Knowledge
+# @dddd2024: Agent & Knowledge
 # ============================================
-/agents/                                 @agent-owner
-/evidence/                               @agent-owner
-/knowledge/                              @agent-owner
+/agents/                                 @dddd2024
+/evidence/                               @dddd2024
+/knowledge/                              @dddd2024
 
 # ============================================
-# @api-ui-owner: API, UI & Report
+# @nO-bot19: API, UI & Report
 # ============================================
-/api/                                    @api-ui-owner
-/report/                                 @api-ui-owner
-/ui/                                     @api-ui-owner
+/api/                                    @nO-bot19
+/report/                                 @nO-bot19
+/ui/                                     @nO-bot19
 
 # ============================================
 # 测试目录 - 按对应模块审查
 # ============================================
-/tests/test_core/                        @core-owner
-/tests/test_ingest/                      @core-owner
-/tests/test_analyzers/                   @analyzer-owner
-/tests/test_agents/                      @agent-owner
-/tests/test_evidence/                    @agent-owner
-/tests/test_knowledge/                   @agent-owner
-/tests/test_api/                         @api-ui-owner
-/tests/test_report/                      @api-ui-owner
-/tests/contracts/                        @core-owner @analyzer-owner @agent-owner @api-ui-owner
+/tests/test_core/                        @gaolinghuaqianling
+/tests/test_ingest/                       @gaolinghuaqianling
+/tests/test_analyzers/                    @Asuka-star-art
+/tests/test_agents/                       @dddd2024
+/tests/test_evidence/                     @dddd2024
+/tests/test_knowledge/                    @dddd2024
+/tests/test_api/                          @nO-bot19
+/tests/test_report/                       @nO-bot19
+/tests/contracts/                         @gaolinghuaqianling @Asuka-star-art @dddd2024 @nO-bot19
 
 # ============================================
 # 根目录旧测试文件 - 按对应模块审查
 # ============================================
-/tests/test_audit_core.py                @core-owner
-/tests/test_ingest.py                    @core-owner
-/tests/test_python_analyzer.py           @analyzer-owner
-/tests/test_js_analyzer.py               @analyzer-owner
-/tests/test_java_analyzer.py             @analyzer-owner
-/tests/test_c_cpp_analyzer.py            @analyzer-owner
-/tests/test_llm_client_rule_mode.py      @agent-owner
-/tests/test_knowledge_graph.py           @agent-owner
-/tests/test_recon_agent.py               @agent-owner
-/tests/test_analysis_agent_with_mock_llm.py @agent-owner
-/tests/test_evidence_builder.py          @agent-owner
-/tests/test_scan_api.py                  @api-ui-owner
+/tests/test_audit_core.py                 @gaolinghuaqianling
+/tests/test_ingest.py                     @gaolinghuaqianling
+/tests/test_python_analyzer.py            @Asuka-star-art
+/tests/test_js_analyzer.py                @Asuka-star-art
+/tests/test_java_analyzer.py              @Asuka-star-art
+/tests/test_c_cpp_analyzer.py             @Asuka-star-art
+/tests/test_llm_client_rule_mode.py       @dddd2024
+/tests/test_knowledge_graph.py            @dddd2024
+/tests/test_recon_agent.py                @dddd2024
+/tests/test_analysis_agent_with_mock_llm.py @dddd2024
+/tests/test_evidence_builder.py           @dddd2024
+/tests/test_scan_api.py                   @nO-bot19
 
 # ============================================
-# CI/CD - @core-owner 负责
+# CI/CD - @gaolinghuaqianling 负责
 # ============================================
-/.github/                                @core-owner
+/.github/                                @gaolinghuaqianling
 
 # ============================================
 # 公共契约规则 - 必须放在文件底部
@@ -83,16 +79,16 @@
 #    后者会生效，确保 models.py 被分配给所有 owner 审查。
 
 # 核心数据模型
-/audit_core/models.py                    @core-owner @analyzer-owner @agent-owner @api-ui-owner
+/audit_core/models.py                    @gaolinghuaqianling @Asuka-star-art @dddd2024 @nO-bot19
 
 # 契约定义
-/contracts/                              @core-owner @analyzer-owner @agent-owner @api-ui-owner
+/contracts/                              @gaolinghuaqianling @Asuka-star-art @dddd2024 @nO-bot19
 
 # 治理文件
-/governance/public_contracts.yaml        @core-owner @analyzer-owner @agent-owner @api-ui-owner
-/governance/module_boundaries.yaml       @core-owner @analyzer-owner @agent-owner @api-ui-owner
+/governance/public_contracts.yaml        @gaolinghuaqianling @Asuka-star-art @dddd2024 @nO-bot19
+/governance/module_boundaries.yaml       @gaolinghuaqianling @Asuka-star-art @dddd2024 @nO-bot19
 
 # 架构文档
-/AGENTS.md                               @core-owner @analyzer-owner @agent-owner @api-ui-owner
-/ARCHITECTURE.md                         @core-owner @analyzer-owner @agent-owner @api-ui-owner
-/AI_COLLABORATION.md                     @core-owner @analyzer-owner @agent-owner @api-ui-owner
+/AGENTS.md                               @gaolinghuaqianling @Asuka-star-art @dddd2024 @nO-bot19
+/ARCHITECTURE.md                         @gaolinghuaqianling @Asuka-star-art @dddd2024 @nO-bot19
+/AI_COLLABORATION.md                     @gaolinghuaqianling @Asuka-star-art @dddd2024 @nO-bot19
