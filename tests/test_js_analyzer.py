@@ -4,9 +4,12 @@ Tests for JavaScript/TypeScript pattern analyzer.
 Verifies detection of:
 - XSS via innerHTML/outerHTML
 - XSS via Express response sinks
+- XSS via document.write / dangerouslySetInnerHTML
 - Eval usage
 - Command Injection
 - SQL Injection
+- SSRF via fetch / axios / http.request
+- Path Traversal via fs operations / res.sendFile
 """
 
 import pytest
@@ -64,6 +67,73 @@ function add(a, b) {
 }
 
 const greet = (name) => `Hello, ${name}!`;
+'''
+
+# --- New test snippets for enhanced detection ---
+
+SSRF_FETCH_CODE = '''
+const express = require('express');
+const app = express();
+
+app.get('/proxy', async (req, res) => {
+    const targetUrl = req.query.url;
+    const response = await fetch(targetUrl);
+    const data = await response.json();
+    res.json(data);
+});
+'''
+
+SSRF_AXIOS_CODE = '''
+const axios = require('axios');
+const express = require('express');
+const app = express();
+
+app.get('/api', async (req, res) => {
+    const url = req.params.endpoint;
+    const result = await axios.get(url);
+    res.send(result.data);
+});
+'''
+
+PATH_TRAVERSAL_FS_CODE = '''
+const express = require('express');
+const fs = require('fs');
+const app = express();
+
+app.get('/read', (req, res) => {
+    const filename = req.query.file;
+    fs.readFile(filename, 'utf8', (err, data) => {
+        res.send(data);
+    });
+});
+'''
+
+PATH_TRAVERSAL_SENDFILE_CODE = '''
+const express = require('express');
+const app = express();
+
+app.get('/download', (req, res) => {
+    const filename = req.params.name;
+    res.sendFile('/uploads/' + filename);
+});
+'''
+
+XSS_DANGEROUSLY_CODE = '''
+import React from 'react';
+
+function UserComponent({ userInput }) {
+    return <div dangerouslySetInnerHTML={{ __html: userInput }} />;
+}
+'''
+
+XSS_DOCUMENT_WRITE_CODE = '''
+const express = require('express');
+const app = express();
+
+app.get('/page', (req, res) => {
+    const name = req.query.name;
+    res.send('<script>document.write("Hello " + name)</script>');
+});
 '''
 
 
@@ -212,3 +282,133 @@ class TestJSPatternAnalyzerFindingFormat:
 
         for finding in results:
             assert finding.file_path == "src/components/output.js"
+
+
+# ---------------------------------------------------------------------------
+# New tests: Enhanced XSS
+# ---------------------------------------------------------------------------
+
+class TestJSPatternAnalyzerXSSAdvanced:
+
+    def test_detects_dangerously_set_inner_html(self):
+        """Should detect React dangerouslySetInnerHTML."""
+        analyzer = JSPatternAnalyzer()
+        unit = _make_unit(XSS_DANGEROUSLY_CODE)
+        results = analyzer.analyze([unit])
+
+        xss_findings = [f for f in results if "XSS" in f.type]
+        assert len(xss_findings) > 0, "Should detect dangerouslySetInnerHTML"
+        assert any(f.rule_id == "JS_XSS_004" for f in xss_findings)
+
+    def test_dangerously_severity_is_warn(self):
+        """dangerouslySetInnerHTML should be WARN severity."""
+        analyzer = JSPatternAnalyzer()
+        unit = _make_unit(XSS_DANGEROUSLY_CODE)
+        results = analyzer.analyze([unit])
+
+        xss_findings = [f for f in results if f.rule_id == "JS_XSS_004"]
+        assert all(f.severity == "WARN" for f in xss_findings)
+
+
+# ---------------------------------------------------------------------------
+# New tests: SSRF detection
+# ---------------------------------------------------------------------------
+
+class TestJSPatternAnalyzerSSRF:
+
+    def test_detects_ssrf_fetch(self):
+        """Should detect SSRF via fetch() with user input."""
+        analyzer = JSPatternAnalyzer()
+        unit = _make_unit(SSRF_FETCH_CODE)
+        results = analyzer.analyze([unit])
+
+        ssrf_findings = [f for f in results if "SSRF" in f.type]
+        assert len(ssrf_findings) > 0, "Should detect SSRF via fetch"
+
+    def test_ssrf_has_cwe918(self):
+        """SSRF findings should reference CWE-918."""
+        analyzer = JSPatternAnalyzer()
+        unit = _make_unit(SSRF_FETCH_CODE)
+        results = analyzer.analyze([unit])
+
+        ssrf_findings = [f for f in results if "SSRF" in f.type]
+        assert any(f.cwe == "CWE-918" for f in ssrf_findings)
+
+    def test_detects_ssrf_axios(self):
+        """Should detect SSRF via axios.get() with user input."""
+        analyzer = JSPatternAnalyzer()
+        unit = _make_unit(SSRF_AXIOS_CODE)
+        results = analyzer.analyze([unit])
+
+        ssrf_findings = [f for f in results if "SSRF" in f.type]
+        assert len(ssrf_findings) > 0, "Should detect SSRF via axios"
+
+    def test_ssrf_axios_rule_id(self):
+        """axios SSRF should have correct rule_id."""
+        analyzer = JSPatternAnalyzer()
+        unit = _make_unit(SSRF_AXIOS_CODE)
+        results = analyzer.analyze([unit])
+
+        ssrf_findings = [f for f in results if "SSRF" in f.type]
+        assert any(f.rule_id == "JS_SSRF_002" for f in ssrf_findings)
+
+    def test_ssrf_severity_is_error(self):
+        """SSRF findings should have ERROR severity."""
+        analyzer = JSPatternAnalyzer()
+        unit = _make_unit(SSRF_FETCH_CODE)
+        results = analyzer.analyze([unit])
+
+        ssrf_findings = [f for f in results if "SSRF" in f.type and f.rule_id == "JS_SSRF_001"]
+        assert all(f.severity == "ERROR" for f in ssrf_findings)
+
+
+# ---------------------------------------------------------------------------
+# New tests: Path Traversal detection
+# ---------------------------------------------------------------------------
+
+class TestJSPatternAnalyzerPathTraversal:
+
+    def test_detects_path_traversal_fs(self):
+        """Should detect path traversal via fs.readFile with user input."""
+        analyzer = JSPatternAnalyzer()
+        unit = _make_unit(PATH_TRAVERSAL_FS_CODE)
+        results = analyzer.analyze([unit])
+
+        pt_findings = [f for f in results if "Path Traversal" in f.type]
+        assert len(pt_findings) > 0, "Should detect path traversal via fs.readFile"
+
+    def test_path_traversal_has_cwe22(self):
+        """Path traversal findings should reference CWE-22."""
+        analyzer = JSPatternAnalyzer()
+        unit = _make_unit(PATH_TRAVERSAL_FS_CODE)
+        results = analyzer.analyze([unit])
+
+        pt_findings = [f for f in results if "Path Traversal" in f.type]
+        assert any(f.cwe == "CWE-22" for f in pt_findings)
+
+    def test_detects_path_traversal_send_file(self):
+        """Should detect path traversal via res.sendFile with user input."""
+        analyzer = JSPatternAnalyzer()
+        unit = _make_unit(PATH_TRAVERSAL_SENDFILE_CODE)
+        results = analyzer.analyze([unit])
+
+        pt_findings = [f for f in results if "Path Traversal" in f.type]
+        assert len(pt_findings) > 0, "Should detect path traversal via res.sendFile"
+
+    def test_send_file_rule_id(self):
+        """res.sendFile path traversal should have correct rule_id."""
+        analyzer = JSPatternAnalyzer()
+        unit = _make_unit(PATH_TRAVERSAL_SENDFILE_CODE)
+        results = analyzer.analyze([unit])
+
+        pt_findings = [f for f in results if "Path Traversal" in f.type]
+        assert any(f.rule_id == "JS_PT_003" for f in pt_findings)
+
+    def test_fs_readfile_rule_id(self):
+        """fs.readFile path traversal should have correct rule_id."""
+        analyzer = JSPatternAnalyzer()
+        unit = _make_unit(PATH_TRAVERSAL_FS_CODE)
+        results = analyzer.analyze([unit])
+
+        pt_findings = [f for f in results if "Path Traversal" in f.type]
+        assert any(f.rule_id == "JS_PT_001" for f in pt_findings)

@@ -114,7 +114,7 @@ class ArchitectureGuard:
                     continue
                     
                 imports = self._extract_imports(py_file)
-                content = py_file.read_text()
+                content = py_file.read_text(encoding='utf-8')
                 
                 for forbidden in forbidden_modules:
                     for imp in imports:
@@ -145,7 +145,7 @@ class ArchitectureGuard:
                 if py_file.name == "__init__.py":
                     continue
                 # 排除通过 orchestrator 的合法导入
-                content = py_file.read_text()
+                content = py_file.read_text(encoding='utf-8')
                 imports = self._extract_imports(py_file)
                 for imp in imports:
                     if imp.startswith("analyzers") or imp.startswith("agents"):
@@ -176,7 +176,7 @@ class ArchitectureGuard:
         # 检查 api/schemas.py 中的 ScanResponse
         schemas_file = self.project_root / "api" / "schemas.py"
         if schemas_file.exists():
-            content = schemas_file.read_text()
+            content = schemas_file.read_text(encoding='utf-8')
             
             for field in required_fields.keys():
                 if field not in content:
@@ -188,7 +188,7 @@ class ArchitectureGuard:
         # 检查 audit_core/models.py 中的 AuditResult
         models_file = self.project_root / "audit_core" / "models.py"
         if models_file.exists():
-            content = models_file.read_text()
+            content = models_file.read_text(encoding='utf-8')
             
             for field in required_fields.keys():
                 if field not in content:
@@ -210,7 +210,7 @@ class ArchitectureGuard:
         api_routes = self.project_root / "api" / "routes"
         if api_routes.exists():
             for py_file in api_routes.rglob("*.py"):
-                content = py_file.read_text()
+                content = py_file.read_text(encoding='utf-8')
                 
                 # 检查是否在 API 中实现了检测逻辑（使用正则匹配）
                 suspicious_patterns = [
@@ -236,7 +236,7 @@ class ArchitectureGuard:
                 if py_file.name == "__init__.py":
                     continue
                     
-                content = py_file.read_text()
+                content = py_file.read_text(encoding='utf-8')
                 
                 # 检查直接文件系统操作
                 fs_patterns = [
@@ -274,7 +274,7 @@ class ArchitectureGuard:
                 if py_file.name == "__init__.py":
                     continue
                     
-                content = py_file.read_text()
+                content = py_file.read_text(encoding='utf-8')
                 imports = self._extract_imports(py_file)
                 
                 # 检查是否导入旧入口
@@ -348,7 +348,7 @@ class ArchitectureGuard:
                 if py_file.name == "__init__.py":
                     continue
                     
-                content = py_file.read_text()
+                content = py_file.read_text(encoding='utf-8')
                 imports = self._extract_imports(py_file)
                 
                 # 检查导入
@@ -432,7 +432,7 @@ class ArchitectureGuard:
         imports = []
         
         try:
-            content = file_path.read_text()
+            content = file_path.read_text(encoding='utf-8')
             tree = ast.parse(content)
             
             for node in ast.walk(tree):

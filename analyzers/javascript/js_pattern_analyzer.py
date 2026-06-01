@@ -2,7 +2,7 @@
 JavaScript/TypeScript pattern analyzer for detecting vulnerabilities.
 
 Uses regex patterns to detect issues like XSS, eval usage, command injection,
-and SQL injection in JavaScript and TypeScript code.
+SQL injection, SSRF, and path traversal in JavaScript and TypeScript code.
 """
 
 import re
@@ -19,9 +19,12 @@ class JSPatternAnalyzer(BaseAnalyzer):
     Detects:
     - Cross-Site Scripting (XSS) via innerHTML/outerHTML assignment
     - XSS via Express response sinks with user input
+    - XSS via document.write / React dangerouslySetInnerHTML
     - Code Injection via eval() / Function()
     - Command Injection via exec() / spawn()
     - SQL Injection via query() with string concatenation
+    - SSRF via fetch / axios / http.request with user input
+    - Path Traversal via fs operations with user input
     """
     
     name = "js_pattern"
@@ -34,7 +37,7 @@ class JSPatternAnalyzer(BaseAnalyzer):
     ]
     
     # Express XSS source pattern
-    EXPRESS_XSS_SOURCE = re.compile(r'req(?:uest)?\.(?:query|body|params)', re.IGNORECASE)
+    EXPRESS_XSS_SOURCE = re.compile(r'req(?:uest)?\.(?:query|body|params|headers|cookies)', re.IGNORECASE)
     
     # Eval patterns
     EVAL_PATTERNS = [
@@ -54,6 +57,12 @@ class JSPatternAnalyzer(BaseAnalyzer):
          "medium", "Potential SQL injection with string concatenation"),
     ]
     
+    # SSRF source pattern
+    SSRF_SOURCE = re.compile(r'req(?:uest)?\.(?:query|body|params|headers)', re.IGNORECASE)
+    
+    # Path traversal source pattern
+    PT_SOURCE = re.compile(r'req(?:uest)?\.(?:query|body|params|headers|files)', re.IGNORECASE)
+    
     def analyze(self, code_units: list[CodeUnit]) -> list[RawFinding]:
         """Analyze JavaScript/TypeScript code units and return findings."""
         findings: list[RawFinding] = []
@@ -71,6 +80,9 @@ class JSPatternAnalyzer(BaseAnalyzer):
             # XSS: Express response sinks
             findings.extend(self._detect_xss_express(unit, source, lines))
             
+            # XSS: document.write / dangerouslySetInnerHTML
+            findings.extend(self._detect_xss_advanced(unit, source, lines))
+            
             # Eval usage
             findings.extend(self._detect_eval(unit, source, lines))
             
@@ -79,6 +91,12 @@ class JSPatternAnalyzer(BaseAnalyzer):
             
             # SQL Injection
             findings.extend(self._detect_sql_injection(unit, source, lines))
+            
+            # SSRF
+            findings.extend(self._detect_ssrf(unit, source, lines))
+            
+            # Path Traversal
+            findings.extend(self._detect_path_traversal(unit, source, lines))
         
         return findings
     
@@ -218,5 +236,273 @@ class JSPatternAnalyzer(BaseAnalyzer):
                             "matched_line": lines[line_num - 1].strip() if line_num <= len(lines) else "",
                         }
                     ))
+        
+        return findings
+    
+    def _detect_xss_advanced(self, unit: CodeUnit, source: str, lines: list[str]) -> list[RawFinding]:
+        """Detect XSS via document.write / dangerouslySetInnerHTML / jQuery.html()."""
+        findings: list[RawFinding] = []
+        
+        # Pattern 1: document.write with user input
+        for m in re.finditer(r'\bdocument\s*\.\s*write\s*\(', source):
+            ctx = source[max(0, m.start() - 200):m.end() + 100]
+            if self.EXPRESS_XSS_SOURCE.search(ctx) or any(s in ctx for s in ['req.', 'params', 'query']):
+                line_num = source[:m.start()].count("\n") + 1
+                findings.append(RawFinding(
+                    rule_id="JS_XSS_003",
+                    type="Cross-Site Scripting (XSS)",
+                    cwe="CWE-79",
+                    severity="ERROR",
+                    confidence="high",
+                    file_path=unit.path,
+                    start_line=unit.start_line + line_num - 1,
+                    message="document.write() with user-controlled content",
+                    engine=self.name,
+                    evidence={
+                        "symbol": "document.write",
+                        "matched_line": lines[line_num - 1].strip() if line_num <= len(lines) else "",
+                    }
+                ))
+        
+        # Pattern 2: React dangerouslySetInnerHTML
+        for m in re.finditer(r'dangerouslySetInnerHTML', source):
+            line_num = source[:m.start()].count("\n") + 1
+            findings.append(RawFinding(
+                rule_id="JS_XSS_004",
+                type="Cross-Site Scripting (XSS)",
+                cwe="CWE-79",
+                severity="WARN",
+                confidence="medium",
+                file_path=unit.path,
+                start_line=unit.start_line + line_num - 1,
+                message="React dangerouslySetInnerHTML bypasses XSS protection",
+                engine=self.name,
+                evidence={
+                    "symbol": "dangerouslySetInnerHTML",
+                    "matched_line": lines[line_num - 1].strip() if line_num <= len(lines) else "",
+                }
+            ))
+        
+        # Pattern 3: jQuery .html() with user input
+        for m in re.finditer(r'\$\s*\(\s*["\'][^"\']*["\']\s*\)\s*\.\s*html\s*\(', source):
+            ctx = source[max(0, m.start() - 200):m.end() + 100]
+            if self.EXPRESS_XSS_SOURCE.search(ctx) or any(s in ctx for s in ['req.', 'params']):
+                line_num = source[:m.start()].count("\n") + 1
+                findings.append(RawFinding(
+                    rule_id="JS_XSS_005",
+                    type="Cross-Site Scripting (XSS)",
+                    cwe="CWE-79",
+                    severity="ERROR",
+                    confidence="high",
+                    file_path=unit.path,
+                    start_line=unit.start_line + line_num - 1,
+                    message="jQuery .html() with user-controlled content",
+                    engine=self.name,
+                    evidence={
+                        "symbol": "$.html()",
+                        "matched_line": lines[line_num - 1].strip() if line_num <= len(lines) else "",
+                    }
+                ))
+        
+        return findings
+    
+    def _detect_ssrf(self, unit: CodeUnit, source: str, lines: list[str]) -> list[RawFinding]:
+        """Detect SSRF via fetch / axios / http.request with user input."""
+        findings: list[RawFinding] = []
+        
+        # Pattern 1: fetch() with user-controlled URL
+        for m in re.finditer(r'\bfetch\s*\(', source):
+            ctx = source[max(0, m.start() - 200):m.end() + 100]
+            if self.SSRF_SOURCE.search(ctx):
+                line_num = source[:m.start()].count("\n") + 1
+                findings.append(RawFinding(
+                    rule_id="JS_SSRF_001",
+                    type="SSRF",
+                    cwe="CWE-918",
+                    severity="ERROR",
+                    confidence="high",
+                    file_path=unit.path,
+                    start_line=unit.start_line + line_num - 1,
+                    message="fetch() with user-controlled URL (SSRF risk)",
+                    engine=self.name,
+                    evidence={
+                        "symbol": "fetch",
+                        "matched_line": lines[line_num - 1].strip() if line_num <= len(lines) else "",
+                    }
+                ))
+        
+        # Pattern 2: axios.get/post/put/delete with user input
+        for m in re.finditer(r'axios\s*\.\s*(get|post|put|delete|patch|request)\s*\(', source):
+            ctx = source[max(0, m.start() - 200):m.end() + 100]
+            if self.SSRF_SOURCE.search(ctx):
+                line_num = source[:m.start()].count("\n") + 1
+                findings.append(RawFinding(
+                    rule_id="JS_SSRF_002",
+                    type="SSRF",
+                    cwe="CWE-918",
+                    severity="ERROR",
+                    confidence="high",
+                    file_path=unit.path,
+                    start_line=unit.start_line + line_num - 1,
+                    message=f"axios.{m.group(1)}() with user-controlled URL (SSRF risk)",
+                    engine=self.name,
+                    evidence={
+                        "symbol": f"axios.{m.group(1)}",
+                        "matched_line": lines[line_num - 1].strip() if line_num <= len(lines) else "",
+                    }
+                ))
+        
+        # Pattern 3: http.request / https.request with user input
+        for m in re.finditer(r'(?:http|https)\s*\.\s*request\s*\(', source):
+            ctx = source[max(0, m.start() - 200):m.end() + 100]
+            if self.SSRF_SOURCE.search(ctx):
+                line_num = source[:m.start()].count("\n") + 1
+                findings.append(RawFinding(
+                    rule_id="JS_SSRF_003",
+                    type="SSRF",
+                    cwe="CWE-918",
+                    severity="ERROR",
+                    confidence="high",
+                    file_path=unit.path,
+                    start_line=unit.start_line + line_num - 1,
+                    message="http.request() with user-controlled URL (SSRF risk)",
+                    engine=self.name,
+                    evidence={
+                        "symbol": "http.request",
+                        "matched_line": lines[line_num - 1].strip() if line_num <= len(lines) else "",
+                    }
+                ))
+        
+        # Pattern 4: node-fetch / got / superagent with user input
+        for m in re.finditer(r'\b(got|request|superagent)\s*\(\s*', source):
+            ctx = source[max(0, m.start() - 200):m.end() + 100]
+            if self.SSRF_SOURCE.search(ctx):
+                line_num = source[:m.start()].count("\n") + 1
+                findings.append(RawFinding(
+                    rule_id="JS_SSRF_004",
+                    type="SSRF",
+                    cwe="CWE-918",
+                    severity="ERROR",
+                    confidence="medium",
+                    file_path=unit.path,
+                    start_line=unit.start_line + line_num - 1,
+                    message=f"{m.group(1)}() with user-controlled URL (SSRF risk)",
+                    engine=self.name,
+                    evidence={
+                        "symbol": m.group(1),
+                        "matched_line": lines[line_num - 1].strip() if line_num <= len(lines) else "",
+                    }
+                ))
+        
+        # Pattern 5: new URL() with user input (potential SSRF source)
+        for m in re.finditer(r'new\s+URL\s*\(', source):
+            ctx = source[max(0, m.start() - 200):m.end() + 50]
+            if self.SSRF_SOURCE.search(ctx):
+                line_num = source[:m.start()].count("\n") + 1
+                findings.append(RawFinding(
+                    rule_id="JS_SSRF_005",
+                    type="SSRF",
+                    cwe="CWE-918",
+                    severity="WARN",
+                    confidence="medium",
+                    file_path=unit.path,
+                    start_line=unit.start_line + line_num - 1,
+                    message="new URL() constructed with user-controlled input",
+                    engine=self.name,
+                    evidence={
+                        "symbol": "URL",
+                        "matched_line": lines[line_num - 1].strip() if line_num <= len(lines) else "",
+                    }
+                ))
+        
+        return findings
+    
+    def _detect_path_traversal(self, unit: CodeUnit, source: str, lines: list[str]) -> list[RawFinding]:
+        """Detect path traversal via fs operations with user input."""
+        findings: list[RawFinding] = []
+        
+        # Pattern 1: fs.readFile / fs.writeFile / fs.unlink with user input
+        for m in re.finditer(r'fs\s*\.\s*(readFile|writeFile|unlink|readFileSync|writeFileSync|unlinkSync|appendFile|appendFileSync|mkdir|rmdir|stat|exists|createReadStream|createWriteStream)\s*\(', source):
+            ctx = source[max(0, m.start() - 200):m.end() + 100]
+            if self.PT_SOURCE.search(ctx):
+                line_num = source[:m.start()].count("\n") + 1
+                findings.append(RawFinding(
+                    rule_id="JS_PT_001",
+                    type="Path Traversal",
+                    cwe="CWE-22",
+                    severity="ERROR",
+                    confidence="high",
+                    file_path=unit.path,
+                    start_line=unit.start_line + line_num - 1,
+                    message=f"fs.{m.group(1)}() with user-controlled path",
+                    engine=self.name,
+                    evidence={
+                        "symbol": f"fs.{m.group(1)}",
+                        "matched_line": lines[line_num - 1].strip() if line_num <= len(lines) else "",
+                    }
+                ))
+        
+        # Pattern 2: path.join with user input
+        for m in re.finditer(r'path\s*\.\s*join\s*\(', source):
+            ctx = source[max(0, m.start() - 200):m.end() + 100]
+            if self.PT_SOURCE.search(ctx):
+                line_num = source[:m.start()].count("\n") + 1
+                findings.append(RawFinding(
+                    rule_id="JS_PT_002",
+                    type="Path Traversal",
+                    cwe="CWE-22",
+                    severity="WARN",
+                    confidence="medium",
+                    file_path=unit.path,
+                    start_line=unit.start_line + line_num - 1,
+                    message="path.join() with user-controlled component",
+                    engine=self.name,
+                    evidence={
+                        "symbol": "path.join",
+                        "matched_line": lines[line_num - 1].strip() if line_num <= len(lines) else "",
+                    }
+                ))
+        
+        # Pattern 3: res.sendFile / res.download with user input
+        for m in re.finditer(r'res\s*\.\s*(sendFile|download)\s*\(', source):
+            ctx = source[max(0, m.start() - 200):m.end() + 100]
+            if self.PT_SOURCE.search(ctx):
+                line_num = source[:m.start()].count("\n") + 1
+                findings.append(RawFinding(
+                    rule_id="JS_PT_003",
+                    type="Path Traversal",
+                    cwe="CWE-22",
+                    severity="ERROR",
+                    confidence="high",
+                    file_path=unit.path,
+                    start_line=unit.start_line + line_num - 1,
+                    message=f"res.{m.group(1)}() with user-controlled file path",
+                    engine=self.name,
+                    evidence={
+                        "symbol": f"res.{m.group(1)}",
+                        "matched_line": lines[line_num - 1].strip() if line_num <= len(lines) else "",
+                    }
+                ))
+        
+        # Pattern 4: Express static with user input
+        for m in re.finditer(r'app\s*\.\s*(use|static)\s*\(', source):
+            ctx = source[max(0, m.start() - 200):m.end() + 200]
+            if self.PT_SOURCE.search(ctx):
+                line_num = source[:m.start()].count("\n") + 1
+                findings.append(RawFinding(
+                    rule_id="JS_PT_004",
+                    type="Path Traversal",
+                    cwe="CWE-22",
+                    severity="WARN",
+                    confidence="medium",
+                    file_path=unit.path,
+                    start_line=unit.start_line + line_num - 1,
+                    message="Express static/serve with user-controlled path",
+                    engine=self.name,
+                    evidence={
+                        "symbol": "express.static",
+                        "matched_line": lines[line_num - 1].strip() if line_num <= len(lines) else "",
+                    }
+                ))
         
         return findings
