@@ -226,6 +226,20 @@ EvidenceBundle → knowledge → report → AuditResult
 - 修改 `audit_core/models.py`
 - 修改 API 路由
 
+**例外说明**:
+- **PythonAnalyzer 临时文件**: `PythonAnalyzer` 为支持 AST/Taint 引擎分析，会将 `CodeUnit.content` 写入临时文件（`tempfile.mkdtemp(prefix="vulnpatch_python_")`）。这是内部实现细节，不违反"禁止直接读取文件系统"规则，因为输入仍通过 `CodeUnit` 对象传入，临时文件仅作为引擎间数据传递的中介。分析完成后会在 `cleanup()` 或 `__del__` 中自动清理。
+
+**语言支持状态**:
+- ✅ **Python**: 完整支持（AST + Regex + Taint 引擎）
+- ✅ **JavaScript**: 模式匹配分析
+- ✅ **Java**: 模式匹配分析
+- ✅ **C/C++**: 模式匹配分析
+- ⚠️ **Go**: 仅语言识别，暂无分析器实现
+- ⚠️ **Rust**: 仅语言识别，暂无分析器实现
+- ⚠️ **PHP**: 仅语言识别，暂无分析器实现
+
+> Go/Rust/PHP 的文件扩展名已在 `ingest/language_router.py` 中定义，可被识别为对应语言，但目前 `analyzers/` 下无对应分析器模块，不会产生 `RawFinding`。如需添加支持，需由成员 2 实现对应语言的 `Analyzer` 并注册到 `AnalyzerRegistry`。
+
 ### 成员 3: Agent & Knowledge
 
 **负责模块**:
@@ -271,6 +285,73 @@ EvidenceBundle → knowledge → report → AuditResult
 - 维护 UI 组件
 - 确保 API 契约合规（/scan 返回 summary、findings、evidence、agent_logs）
 - UI 前端使用 `/scan` 同步接口，渲染 `result.findings`（非 `result.vulnerabilities`）
+
+#### API 分工详情
+
+**文件结构**:
+- `api/server.py` - FastAPI 应用入口和中间件配置
+- `api/schemas.py` - 请求/响应 Pydantic 模型定义
+- `api/view_models.py` - 视图模型和响应格式化
+- `api/state.py` - 应用状态管理
+- `api/routes/scan.py` - 主扫描端点 `/scan`
+- `api/routes/findings.py` - 漏洞发现查询端点
+- `api/routes/evidence.py` - 证据包查询端点
+- `api/routes/agents.py` - Agent 状态和日志端点
+- `api/routes/report.py` - 报告生成端点
+- `api/routes/health.py` - 健康检查端点
+
+**API 设计规范**:
+- 所有扫描请求必须通过 `AuditOrchestrator` 调度
+- API 层只负责路由、参数校验和响应序列化
+- 不得直接实例化 Analyzer 或 Agent
+- 错误处理使用 `HTTPException`，区分客户端错误（4xx）和服务端错误（5xx）
+
+**核心端点**:
+| 端点 | 方法 | 描述 |
+|------|------|------|
+| `/scan` | POST | 主扫描入口，返回完整审计结果 |
+| `/findings` | GET | 查询漏洞发现列表 |
+| `/evidence` | GET | 查询证据包列表 |
+| `/agents` | GET | 查询 Agent 运行状态 |
+| `/report` | GET | 生成报告（支持 JSON/Markdown/HTML） |
+| `/health` | GET | 健康检查 |
+
+#### Report 分工详情
+
+**文件结构**:
+- `report/json_report.py` - JSON 格式报告生成器
+- `report/markdown_report.py` - Markdown 格式报告生成器
+- `report/html_report.py` - HTML 格式报告生成器
+
+**报告生成规范**:
+- 输入：`AuditResult` 对象（来自 `audit_core.models`）
+- 输出：格式化的报告内容（JSON dict / Markdown str / HTML str）
+- 报告模块只消费 `AuditResult`，不反向调用分析器或 Agent
+- 不得导入 `analyzers`、`agents`、`evidence`、`knowledge` 模块
+
+**报告内容要求**:
+- 摘要（Summary）：总代码单元数、发现数、风险评分、语言分布
+- 漏洞列表（Findings）：类型、严重性、置信度、文件位置、代码片段
+- 证据包（Evidence）：调用链、污点流、相关代码
+- Agent 日志（Agent Logs）：推理过程、决策依据
+
+#### UI 分工详情
+
+**文件结构**:
+- `ui/index.html` - 主页面 HTML 结构
+- `ui/app.js` - 主应用逻辑和入口
+- `ui/api.js` - API 调用封装
+- `ui/findings.js` - 漏洞发现列表渲染
+- `ui/graph.js` - 知识图谱可视化
+- `ui/state.js` - 前端状态管理
+- `ui/i18n.js` - 国际化支持
+- `ui/styles.css` - 样式定义
+
+**UI 设计规范**:
+- 前端通过 API 端点获取数据，不直接访问后端模块
+- 不在前端实现任何分析或检测逻辑
+- 扫描触发通过 `POST /scan` API 调用
+- 渲染漏洞列表时从 `result.findings` 读取（非 `result.vulnerabilities`）
 
 **UI / API 契约**（Stage 2.1 对齐）:
 - 前端 `ui/app.js` 调用 `POST /scan` 获取扫描结果（不再使用 `/analyze-input-async` + `/jobs/{id}` 轮询）
@@ -435,4 +516,4 @@ python -c "from audit_core.orchestrator import AuditOrchestrator; o = AuditOrche
 ---
 
 *最后更新: 2026-06-01*
-*版本: v1.3 - Stage 2.2 协作治理补强（测试路径修正、CI 增强）*
+*版本: v1.4 - Stage 2.2 协作治理补强（成员 4 分工细化、PythonAnalyzer 临时文件例外说明、Go/Rust/PHP 语言支持状态说明）*
