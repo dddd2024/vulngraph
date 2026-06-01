@@ -143,6 +143,10 @@ class PythonAnalyzer(BaseAnalyzer):
         taint_findings = self._safe_run(self._run_taint_engine, tmp_path, unit)
         findings.extend(taint_findings)
 
+        # 4. SSTI engine
+        ssti_findings = self._safe_run(self._run_ssti_engine, unit)
+        findings.extend(ssti_findings)
+
         return findings
 
     # ------------------------------------------------------------------
@@ -222,20 +226,48 @@ class PythonAnalyzer(BaseAnalyzer):
     def _run_taint_engine(self, tmp_path: str, unit: CodeUnit) -> list[RawFinding]:
         """Run the Taint engine and convert findings."""
         from analyzers.python.engines.taint_engine import TaintEngine
+        from analyzers.taint.taint_analyzer import analyze_code_unit
 
-        if not self._taint_rules:
+        findings: list[RawFinding] = []
+
+        # 1. Run legacy taint engine with YAML rules
+        if self._taint_rules:
+            try:
+                engine = TaintEngine()
+                legacy_findings = engine.scan_file(tmp_path, self._taint_rules)
+                for f in legacy_findings:
+                    old = f.to_dict()
+                    converted = self._convert_finding(old, unit)
+                    if converted is not None:
+                        findings.append(converted)
+            except Exception as exc:
+                logger.warning("Legacy taint engine failed: %s", exc)
+
+        # 2. Run new advanced taint analyzer
+        try:
+            new_findings = analyze_code_unit(unit)
+            # Convert engine from "taint" to "python" for consistency
+            for finding in new_findings:
+                finding.engine = self.name
+            findings.extend(new_findings)
+        except Exception as exc:
+            logger.warning("Advanced taint analyzer failed: %s", exc)
+
+        return findings
+
+    def _run_ssti_engine(self, unit: CodeUnit) -> list[RawFinding]:
+        """Run the SSTI (Server-Side Template Injection) engine."""
+        from analyzers.python.engines.ssti_engine import analyze_code_unit
+
+        try:
+            findings = analyze_code_unit(unit)
+            # Ensure engine field is set to "python"
+            for finding in findings:
+                finding.engine = self.name
+            return findings
+        except Exception as exc:
+            logger.warning("SSTI engine failed: %s", exc)
             return []
-
-        engine = TaintEngine()
-        findings = engine.scan_file(tmp_path, self._taint_rules)
-
-        results: list[RawFinding] = []
-        for f in findings:
-            old = f.to_dict()
-            converted = self._convert_finding(old, unit)
-            if converted is not None:
-                results.append(converted)
-        return results
 
     # ------------------------------------------------------------------
     # Internal: safe execution wrapper

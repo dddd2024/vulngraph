@@ -4,9 +4,10 @@ Tests for Java pattern analyzer.
 Verifies detection of:
 - SQL Injection
 - Command Injection
-- Path Traversal
+- Path Traversal (File, Paths.get, transferTo, FileInputStream)
 - XXE
-- Insecure Deserialization
+- Insecure Deserialization (ObjectInputStream, XMLDecoder, Kryo, Jackson, Hessian)
+- SSRF (URL, HttpURLConnection, RestTemplate, OkHttp, HttpClient)
 - Hardcoded Secret
 """
 
@@ -81,6 +82,98 @@ HARDCODED_SECRET_CODE = '''
 public class Config {
     private String password = "admin123";
     private String api_key = "sk-abc123xyz";
+}
+'''
+
+# --- New test snippets for enhanced detection ---
+
+SSRF_URL_CODE = '''
+import java.net.*;
+import javax.servlet.http.*;
+
+public class ProxyController {
+    public void fetch(HttpServletRequest request) {
+        String targetUrl = request.getParameter("url");
+        URL url = new URL(targetUrl);
+        HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+        conn.connect();
+    }
+}
+'''
+
+SSRF_REST_TEMPLATE_CODE = '''
+import org.springframework.web.client.RestTemplate;
+import javax.servlet.http.*;
+
+public class ApiService {
+    private RestTemplate restTemplate = new RestTemplate();
+
+    public String getData(HttpServletRequest request) {
+        String url = request.getParameter("endpoint");
+        return restTemplate.getForObject(url, String.class);
+    }
+}
+'''
+
+PATH_TRAVERSAL_PATHS_GET = '''
+import java.nio.file.*;
+import javax.servlet.http.*;
+
+public class FileService {
+    public byte[] read(HttpServletRequest request) {
+        String filename = request.getParameter("file");
+        Path path = Paths.get("/uploads", filename);
+        return Files.readAllBytes(path);
+    }
+}
+'''
+
+PATH_TRAVERSAL_TRANSFER_CODE = '''
+import org.springframework.web.multipart.MultipartFile;
+import java.io.*;
+
+public class UploadService {
+    public void upload(MultipartFile file, HttpServletRequest request) throws IOException {
+        String filename = file.getOriginalFilename();
+        File dest = new File("/uploads/" + filename);
+        file.transferTo(dest);
+    }
+}
+'''
+
+DESERIALIZATION_XML_DECODER = '''
+import java.beans.XMLDecoder;
+import java.io.*;
+
+public class XmlDataLoader {
+    public Object load(InputStream in) {
+        XMLDecoder decoder = new XMLDecoder(in);
+        return decoder.readObject();
+    }
+}
+'''
+
+DESERIALIZATION_JACKSON = '''
+import com.fasterxml.jackson.databind.ObjectMapper;
+
+public class JsonParser {
+    public ObjectMapper createMapper() {
+        ObjectMapper mapper = new ObjectMapper();
+        mapper.enableDefaultTyping();
+        return mapper;
+    }
+}
+'''
+
+DESERIALIZATION_HESSIAN = '''
+import com.caucho.hessian.HessianInput;
+import java.io.*;
+
+public class HessianService {
+    public Object read(InputStream in) throws IOException {
+        HessianInput hin = new HessianInput(in);
+        return hin.readObject();
+    }
 }
 '''
 
@@ -262,3 +355,146 @@ class TestJavaPatternAnalyzerFindingFormat:
 
         for finding in results:
             assert finding.file_path == "src/main/java/UserDao.java"
+
+
+# ---------------------------------------------------------------------------
+# New tests: Enhanced Path Traversal
+# ---------------------------------------------------------------------------
+
+class TestJavaPathTraversalEnhanced:
+
+    def test_detects_paths_get(self):
+        """Should detect Path Traversal via Paths.get() with user input."""
+        analyzer = JavaPatternAnalyzer()
+        unit = _make_unit(PATH_TRAVERSAL_PATHS_GET)
+        results = analyzer.analyze([unit])
+
+        pt_findings = [f for f in results if "Path Traversal" in f.type]
+        assert len(pt_findings) > 0, "Should detect Paths.get() path traversal"
+        assert any(f.evidence.get("symbol") == "Paths.get" for f in pt_findings)
+
+    def test_detects_transfer_to(self):
+        """Should detect Path Traversal via transferTo with user-controlled filename."""
+        analyzer = JavaPatternAnalyzer()
+        unit = _make_unit(PATH_TRAVERSAL_TRANSFER_CODE)
+        results = analyzer.analyze([unit])
+
+        pt_findings = [f for f in results if "Path Traversal" in f.type]
+        assert len(pt_findings) > 0, "Should detect transferTo path traversal"
+        assert any(f.evidence.get("symbol") == "transferTo" for f in pt_findings)
+
+    def test_paths_get_has_cwe22(self):
+        """Paths.get path traversal should reference CWE-22."""
+        analyzer = JavaPatternAnalyzer()
+        unit = _make_unit(PATH_TRAVERSAL_PATHS_GET)
+        results = analyzer.analyze([unit])
+
+        pt_findings = [f for f in results if "Path Traversal" in f.type]
+        assert any(f.cwe == "CWE-22" for f in pt_findings)
+
+
+# ---------------------------------------------------------------------------
+# New tests: Enhanced Deserialization
+# ---------------------------------------------------------------------------
+
+class TestJavaDeserializationEnhanced:
+
+    def test_detects_xml_decoder(self):
+        """Should detect XMLDecoder deserialization."""
+        analyzer = JavaPatternAnalyzer()
+        unit = _make_unit(DESERIALIZATION_XML_DECODER)
+        results = analyzer.analyze([unit])
+
+        deser_findings = [f for f in results if "Deserialization" in f.type]
+        assert len(deser_findings) > 0, "Should detect XMLDecoder deserialization"
+        assert any(f.rule_id == "JAVA_DESER_002" for f in deser_findings)
+
+    def test_detects_jackson_enable_default_typing(self):
+        """Should detect Jackson enableDefaultTyping."""
+        analyzer = JavaPatternAnalyzer()
+        unit = _make_unit(DESERIALIZATION_JACKSON)
+        results = analyzer.analyze([unit])
+
+        deser_findings = [f for f in results if "Deserialization" in f.type]
+        assert len(deser_findings) > 0, "Should detect Jackson enableDefaultTyping"
+        assert any(f.rule_id == "JAVA_DESER_004" for f in deser_findings)
+
+    def test_detects_hessian_deserialization(self):
+        """Should detect Hessian deserialization."""
+        analyzer = JavaPatternAnalyzer()
+        unit = _make_unit(DESERIALIZATION_HESSIAN)
+        results = analyzer.analyze([unit])
+
+        deser_findings = [f for f in results if "Deserialization" in f.type]
+        assert len(deser_findings) > 0, "Should detect Hessian deserialization"
+        assert any(f.rule_id == "JAVA_DESER_005" for f in deser_findings)
+
+    def test_xml_decoder_severity_is_error(self):
+        """XMLDecoder should be ERROR severity."""
+        analyzer = JavaPatternAnalyzer()
+        unit = _make_unit(DESERIALIZATION_XML_DECODER)
+        results = analyzer.analyze([unit])
+
+        xml_dec_findings = [f for f in results if f.rule_id == "JAVA_DESER_002"]
+        assert all(f.severity == "ERROR" for f in xml_dec_findings)
+
+    def test_hessian_severity_is_warn(self):
+        """Hessian should be WARN severity (medium confidence)."""
+        analyzer = JavaPatternAnalyzer()
+        unit = _make_unit(DESERIALIZATION_HESSIAN)
+        results = analyzer.analyze([unit])
+
+        hessian_findings = [f for f in results if f.rule_id == "JAVA_DESER_005"]
+        assert all(f.severity == "WARN" for f in hessian_findings)
+
+
+# ---------------------------------------------------------------------------
+# New tests: SSRF detection
+# ---------------------------------------------------------------------------
+
+class TestJavaSSRF:
+
+    def test_detects_ssrf_url(self):
+        """Should detect SSRF via new URL(user input)."""
+        analyzer = JavaPatternAnalyzer()
+        unit = _make_unit(SSRF_URL_CODE)
+        results = analyzer.analyze([unit])
+
+        ssrf_findings = [f for f in results if "SSRF" in f.type]
+        assert len(ssrf_findings) > 0, "Should detect SSRF via URL construction"
+
+    def test_ssrf_has_cwe918(self):
+        """SSRF findings should reference CWE-918."""
+        analyzer = JavaPatternAnalyzer()
+        unit = _make_unit(SSRF_URL_CODE)
+        results = analyzer.analyze([unit])
+
+        ssrf_findings = [f for f in results if "SSRF" in f.type]
+        assert any(f.cwe == "CWE-918" for f in ssrf_findings)
+
+    def test_detects_ssrf_rest_template(self):
+        """Should detect SSRF via RestTemplate with user input."""
+        analyzer = JavaPatternAnalyzer()
+        unit = _make_unit(SSRF_REST_TEMPLATE_CODE)
+        results = analyzer.analyze([unit])
+
+        ssrf_findings = [f for f in results if "SSRF" in f.type]
+        assert len(ssrf_findings) > 0, "Should detect SSRF via RestTemplate"
+
+    def test_ssrf_rest_template_rule_id(self):
+        """RestTemplate SSRF should have correct rule_id."""
+        analyzer = JavaPatternAnalyzer()
+        unit = _make_unit(SSRF_REST_TEMPLATE_CODE)
+        results = analyzer.analyze([unit])
+
+        ssrf_findings = [f for f in results if "SSRF" in f.type]
+        assert any(f.rule_id == "JAVA_SSRF_003" for f in ssrf_findings)
+
+    def test_ssrf_severity_is_error(self):
+        """SSRF findings should have ERROR severity."""
+        analyzer = JavaPatternAnalyzer()
+        unit = _make_unit(SSRF_URL_CODE)
+        results = analyzer.analyze([unit])
+
+        ssrf_findings = [f for f in results if "SSRF" in f.type]
+        assert all(f.severity == "ERROR" for f in ssrf_findings)

@@ -2,11 +2,15 @@
 Tests for C/C++ pattern analyzer.
 
 Verifies detection of:
-- Buffer Overflow
+- Buffer Overflow (with context-aware false positive reduction)
 - Format String
-- Command Injection
+- Command Injection (with hardcoded string exclusion)
 - Memory Leak
 - Race Condition (TOCTOU)
+- Integer Overflow
+- Use-After-Free
+- Null Pointer Dereference
+- Double Free
 """
 
 import pytest
@@ -78,6 +82,88 @@ int add(int a, int b) {
 
 void safe_copy(char *dest, const char *src, size_t n) {
     strncpy(dest, src, n);
+}
+'''
+
+# --- New test snippets for enhanced detection ---
+
+# Hardcoded system() - should NOT be reported
+HARDCODED_SYSTEM_CODE = '''
+#include <stdlib.h>
+
+void run_ls() {
+    system("ls -la");
+    popen("echo hello", "r");
+}
+'''
+
+# Commented out dangerous function - should NOT be reported
+COMMENTED_DANGEROUS_CODE = '''
+#include <string.h>
+
+void copy_data(char *dest, char *src) {
+    // strcpy(dest, src);  // This is commented out
+    strncpy(dest, src, 256);
+}
+'''
+
+# Safe sprintf with no %s - should NOT be reported
+SAFE_SPRINTF_CODE = '''
+#include <stdio.h>
+
+void print_value(int x) {
+    char buf[64];
+    sprintf(buf, "Value: %d", x);
+    printf("%s\\n", buf);
+}
+'''
+
+# Safe strcpy from literal - should NOT be reported
+SAFE_STRCPY_CODE = '''
+#include <string.h>
+
+void init_buffer(char *buf) {
+    strcpy(buf, "Hello World");
+}
+'''
+
+INTEGER_OVERFLOW_CODE = '''
+#include <stdlib.h>
+
+void allocate_buffer(int width, int height) {
+    char *pixels = malloc(width * height);
+    pixels[0] = 0;
+}
+'''
+
+USE_AFTER_FREE_CODE = '''
+#include <stdlib.h>
+#include <stdio.h>
+
+void use_after_free_example() {
+    char *data = malloc(100);
+    strcpy(data, "hello");
+    free(data);
+    printf("Data: %s\\n", data);
+}
+'''
+
+DOUBLE_FREE_CODE = '''
+#include <stdlib.h>
+
+void double_free_example() {
+    char *data = malloc(100);
+    free(data);
+    free(data);
+}
+'''
+
+NULL_DEREF_CODE = '''
+#include <stdlib.h>
+
+void null_deref_example() {
+    char *buf = malloc(1024);
+    buf[0] = 'a';
 }
 '''
 
@@ -259,3 +345,155 @@ class TestCPatternAnalyzerFindingFormat:
 
         for finding in results:
             assert finding.file_path == "src/utils/strings.c"
+
+
+# ---------------------------------------------------------------------------
+# New tests: Context-aware false positive reduction
+# ---------------------------------------------------------------------------
+
+class TestCPatternAnalyzerFalsePositiveReduction:
+
+    def test_hardcoded_system_not_reported(self):
+        """system() with hardcoded string should NOT be reported."""
+        analyzer = CPatternAnalyzer()
+        unit = _make_unit(HARDCODED_SYSTEM_CODE)
+        results = analyzer.analyze([unit])
+
+        cmd_findings = [f for f in results if "Command Injection" in f.type]
+        assert len(cmd_findings) == 0, "Hardcoded system() should not be reported"
+
+    def test_commented_strcpy_not_reported(self):
+        """Commented-out strcpy should NOT be reported."""
+        analyzer = CPatternAnalyzer()
+        unit = _make_unit(COMMENTED_DANGEROUS_CODE)
+        results = analyzer.analyze([unit])
+
+        bof_findings = [f for f in results if "Buffer Overflow" in f.type]
+        assert len(bof_findings) == 0, "Commented-out strcpy should not be reported"
+
+    def test_safe_sprintf_not_reported(self):
+        """sprintf with hardcoded format and no %s should NOT be reported."""
+        analyzer = CPatternAnalyzer()
+        unit = _make_unit(SAFE_SPRINTF_CODE)
+        results = analyzer.analyze([unit])
+
+        bof_findings = [f for f in results if "Buffer Overflow" in f.type]
+        assert len(bof_findings) == 0, "Safe sprintf should not be reported"
+
+    def test_safe_strcpy_from_literal_not_reported(self):
+        """strcpy from hardcoded string literal should NOT be reported."""
+        analyzer = CPatternAnalyzer()
+        unit = _make_unit(SAFE_STRCPY_CODE)
+        results = analyzer.analyze([unit])
+
+        bof_findings = [f for f in results if "Buffer Overflow" in f.type]
+        assert len(bof_findings) == 0, "strcpy from literal should not be reported"
+
+
+# ---------------------------------------------------------------------------
+# New tests: Integer Overflow
+# ---------------------------------------------------------------------------
+
+class TestCPatternAnalyzerIntegerOverflow:
+
+    def test_detects_integer_overflow_malloc(self):
+        """Should detect integer overflow in malloc(a * b)."""
+        analyzer = CPatternAnalyzer()
+        unit = _make_unit(INTEGER_OVERFLOW_CODE)
+        results = analyzer.analyze([unit])
+
+        int_findings = [f for f in results if "Integer Overflow" in f.type]
+        assert len(int_findings) > 0, "Should detect integer overflow in malloc(a*b)"
+
+    def test_integer_overflow_has_cwe190(self):
+        """Integer overflow should reference CWE-190."""
+        analyzer = CPatternAnalyzer()
+        unit = _make_unit(INTEGER_OVERFLOW_CODE)
+        results = analyzer.analyze([unit])
+
+        int_findings = [f for f in results if "Integer Overflow" in f.type]
+        assert any(f.cwe == "CWE-190" for f in int_findings)
+
+
+# ---------------------------------------------------------------------------
+# New tests: Use-After-Free
+# ---------------------------------------------------------------------------
+
+class TestCPatternAnalyzerUseAfterFree:
+
+    def test_detects_use_after_free(self):
+        """Should detect use-after-free."""
+        analyzer = CPatternAnalyzer()
+        unit = _make_unit(USE_AFTER_FREE_CODE)
+        results = analyzer.analyze([unit])
+
+        uaf_findings = [f for f in results if "Use-After-Free" in f.type]
+        assert len(uaf_findings) > 0, "Should detect use-after-free"
+
+    def test_use_after_free_has_cwe416(self):
+        """Use-after-free should reference CWE-416."""
+        analyzer = CPatternAnalyzer()
+        unit = _make_unit(USE_AFTER_FREE_CODE)
+        results = analyzer.analyze([unit])
+
+        uaf_findings = [f for f in results if "Use-After-Free" in f.type]
+        assert any(f.cwe == "CWE-416" for f in uaf_findings)
+
+
+# ---------------------------------------------------------------------------
+# New tests: Double Free
+# ---------------------------------------------------------------------------
+
+class TestCPatternAnalyzerDoubleFree:
+
+    def test_detects_double_free(self):
+        """Should detect double free."""
+        analyzer = CPatternAnalyzer()
+        unit = _make_unit(DOUBLE_FREE_CODE)
+        results = analyzer.analyze([unit])
+
+        df_findings = [f for f in results if "Double Free" in f.type]
+        assert len(df_findings) > 0, "Should detect double free"
+
+    def test_double_free_has_cwe415(self):
+        """Double free should reference CWE-415."""
+        analyzer = CPatternAnalyzer()
+        unit = _make_unit(DOUBLE_FREE_CODE)
+        results = analyzer.analyze([unit])
+
+        df_findings = [f for f in results if "Double Free" in f.type]
+        assert any(f.cwe == "CWE-415" for f in df_findings)
+
+    def test_double_free_confidence_high(self):
+        """Double free should have high confidence."""
+        analyzer = CPatternAnalyzer()
+        unit = _make_unit(DOUBLE_FREE_CODE)
+        results = analyzer.analyze([unit])
+
+        df_findings = [f for f in results if "Double Free" in f.type]
+        assert all(f.confidence == "high" for f in df_findings)
+
+
+# ---------------------------------------------------------------------------
+# New tests: Null Pointer Dereference
+# ---------------------------------------------------------------------------
+
+class TestCPatternAnalyzerNullDeref:
+
+    def test_detects_null_deref(self):
+        """Should detect null pointer dereference."""
+        analyzer = CPatternAnalyzer()
+        unit = _make_unit(NULL_DEREF_CODE)
+        results = analyzer.analyze([unit])
+
+        null_findings = [f for f in results if "Null Pointer" in f.type]
+        assert len(null_findings) > 0, "Should detect null pointer dereference"
+
+    def test_null_deref_has_cwe476(self):
+        """Null deref should reference CWE-476."""
+        analyzer = CPatternAnalyzer()
+        unit = _make_unit(NULL_DEREF_CODE)
+        results = analyzer.analyze([unit])
+
+        null_findings = [f for f in results if "Null Pointer" in f.type]
+        assert any(f.cwe == "CWE-476" for f in null_findings)
