@@ -7,6 +7,10 @@
 # - 成员 3: Agent & Knowledge (agents/, knowledge/, evidence/)
 # - 成员 4: API, UI & Report (api/, report/, ui/)
 #
+# ⚠️ 重要：@member1/@member2/@member3/@member4 是占位符！
+#    使用前必须替换为真实的 GitHub 用户名或 GitHub Team。
+#    替换示例：将 @member1 替换为 @actual_username
+#
 # 公共契约需要全员审查。
 
 # 公共契约 - 全员审查

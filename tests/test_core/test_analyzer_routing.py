@@ -168,7 +168,7 @@ class TestRunAnalyzersLanguageRouting:
         registry.register(MockPythonAnalyzer())
         registry.register(MockJavaScriptAnalyzer())
 
-        orchestrator = AuditOrchestrator(registry=registry)
+        orchestrator = AuditOrchestrator(registry=registry, use_pipeline=False)
 
         code_units = [
             CodeUnit(path="a.py", language="python", content="code"),
@@ -213,7 +213,7 @@ class TestRunAnalyzersLanguageRouting:
         registry = AnalyzerRegistry()
         registry.register(MockPythonAnalyzer())
 
-        orchestrator = AuditOrchestrator(registry=registry)
+        orchestrator = AuditOrchestrator(registry=registry, use_pipeline=False)
 
         code_units = [
             CodeUnit(path="a.py", language="python", content="code"),
@@ -365,7 +365,7 @@ class TestScanCodeIntegration:
         registry = AnalyzerRegistry()
         registry.register(MockPythonAnalyzer())
 
-        orchestrator = AuditOrchestrator(registry=registry)
+        orchestrator = AuditOrchestrator(registry=registry, use_pipeline=False)
 
         code = "print('hello')"
         result = orchestrator.scan_code(code, language="python")

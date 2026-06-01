@@ -102,21 +102,36 @@
     };
 
     try {
-      // Use the /scan endpoint (synchronous)
+      // Step 1: Call /scan to get raw result
       const result = await VulnPatchAPI.scan(payload);
       VulnPatchState.setLastResult(result);
 
-      // Update UI
-      VulnPatchFindings.updateOverview(result);
-      VulnPatchFindings.renderList(result, els.findingsList, function(finding) {
+      // Step 2: Save raw result for JSON display
+      setRawJson(result);
+
+      // Step 3: Try to get FindingView for UI rendering
+      let displayData = result; // fallback to raw result
+      if (result.scan_id) {
+        try {
+          const view = await VulnPatchAPI.getFindingsView(result.scan_id);
+          if (view && view.findings) {
+            displayData = view;
+          }
+        } catch (viewErr) {
+          console.warn("FindingView fetch failed, using raw result:", viewErr);
+        }
+      }
+
+      // Step 4: Render using view (or fallback to raw)
+      VulnPatchFindings.updateOverview(displayData);
+      VulnPatchFindings.renderList(displayData, els.findingsList, function(finding) {
         VulnPatchFindings.renderDetail(finding, els.findingDetail);
         els.findingDetail.style.display = "block";
       });
 
-      setRawJson(result);
       setStatus(VulnPatchI18n.t("status.completed"), "100%");
 
-      // Load graphs
+      // Load graphs (use raw result for graph data)
       VulnPatchGraph.loadCallGraph(els.graphContainer);
       VulnPatchGraph.loadKnowledgeGraph(result, els.knowledgeContainer);
 

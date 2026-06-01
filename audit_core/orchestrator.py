@@ -65,7 +65,7 @@ class AuditOrchestrator:
         *,
         llm_client: Any | None = None,
         llm_config: dict[str, Any] | None = None,
-        use_pipeline: bool = False,
+        use_pipeline: bool = True,
     ):
         """
         Initialize the orchestrator.

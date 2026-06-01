@@ -98,7 +98,7 @@ class TestReconHypothesisFlow:
             captured_hypotheses.append(list(hypotheses))
             return self._make_judge_result(finding_arg)
 
-        orch = AuditOrchestrator()
+        orch = AuditOrchestrator(use_pipeline=False)
 
         # Mock repo_loader to return our controlled unit
         with patch.object(
@@ -162,7 +162,7 @@ class TestReconHypothesisFlow:
             captured_hypotheses.append(list(hypotheses))
             return self._make_judge_result(finding_arg)
 
-        orch = AuditOrchestrator()
+        orch = AuditOrchestrator(use_pipeline=False)
 
         with patch.object(
             orch.repo_loader, "load_code_snippet", return_value=[actual_unit]
@@ -227,7 +227,7 @@ class TestReconHypothesisFlow:
             captured_hypotheses.append(list(hypotheses))
             return self._make_judge_result(finding_arg)
 
-        orch = AuditOrchestrator()
+        orch = AuditOrchestrator(use_pipeline=False)
 
         with patch.object(
             orch.repo_loader, "load_code_snippet", return_value=[unit]
@@ -249,6 +249,7 @@ class TestReconHypothesisFlow:
                             ):
                                 result = orch.scan_code("x=1", language="python")
 
+        # Recon hypothesis should be forwarded via supporting_evidence_ids field
         assert len(captured_hypotheses) == 1
         judge_hypotheses = captured_hypotheses[0]
         assert any(h.id == recon_hypo.id for h in judge_hypotheses), (
@@ -271,7 +272,7 @@ class TestReconHypothesisFlow:
             metadata={"language": "python"},
         )
 
-        orch = AuditOrchestrator()
+        orch = AuditOrchestrator(use_pipeline=False)
 
         with patch.object(
             orch.recon_agent, "run", return_value=([recon_hypo], [])

@@ -44,7 +44,7 @@ jobs:
 
       - name: Run Module Smoke Tests
         run: |
-          python -m pytest tests/test_core/test_smoke.py tests/test_agents/test_smoke.py tests/test_analyzers/test_smoke.py tests/test_api/test_smoke.py tests/test_report/test_smoke.py -v --tb=short
+          python -m pytest tests/test_core/test_smoke.py tests/test_core/test_pipeline.py tests/test_agents/test_smoke.py tests/test_analyzers/test_smoke.py tests/test_api/test_smoke.py tests/test_report/test_smoke.py -v --tb=short
 
       - name: Summary
         if: always()

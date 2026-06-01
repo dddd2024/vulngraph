@@ -88,19 +88,19 @@ class EvidenceStage(BaseStage):
                 if decision is None:
                     continue
 
-                result = self.agent_runtime.build_evidence(
+                evidence, evidence_logs = self.agent_runtime.build_evidence(
                     finding=finding,
                     code_unit=unit,
                     hypotheses=hypotheses,
-                    decision=decision,
                     agent_logs=[],  # Logs already collected in previous stages
+                    judge_decision=decision,
                 )
 
-                bundle = result.output
-                if bundle is not None:
-                    evidence_bundles.append(bundle)
+                if evidence is not None:
+                    evidence_bundles.append(evidence)
 
-                log_count += len(result.logs)
+                log_count += len(evidence_logs)
+                ctx.agent_logs.extend(evidence_logs)
 
             ctx.evidence_bundles = evidence_bundles
 

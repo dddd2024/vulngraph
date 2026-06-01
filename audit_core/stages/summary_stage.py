@@ -32,15 +32,6 @@ class SummaryStage(BaseStage):
     name = "summary"
 
     def run(self, ctx: PipelineContext) -> StageResult:
-        """
-        Generate audit summary and result.
-
-        Args:
-            ctx: Pipeline context with all accumulated data
-
-        Returns:
-            StageResult with summary metrics
-        """
         start_time = time.time()
 
         try:
@@ -82,6 +73,25 @@ class SummaryStage(BaseStage):
                 scanned_files=scanned_files,
             )
 
+            # Build this stage's own result (for inclusion in stage_results)
+            this_stage_result = StageResult(
+                name=self.name,
+                success=True,
+                metrics={
+                    "total_findings": len(ctx.merged_findings),
+                    "total_evidence": len(ctx.evidence_bundles),
+                    "risk_score": round(avg_risk, 1),
+                    "confirmed": confirmed_count,
+                    "suspicious": suspicious_count,
+                    "rejected": rejected_count,
+                },
+                duration_ms=(time.time() - start_time) * 1000,
+            )
+
+            # Build stage_results dict including this stage
+            all_stage_results = dict(ctx.stage_results)
+            all_stage_results[self.name] = this_stage_result
+
             # Build final result
             result = AuditResult(
                 summary=summary,
@@ -95,9 +105,11 @@ class SummaryStage(BaseStage):
                             "metrics": sr.metrics,
                             "duration_ms": sr.duration_ms,
                         }
-                        for name, sr in ctx.stage_results.items()
+                        for name, sr in all_stage_results.items()
                     },
                     "analyzer_metadata": ctx.analyzer_metadata,
+                    # Backward compatibility: old API endpoints expect this format
+                    "analyzer_info": self._build_analyzer_info(ctx.analyzer_metadata),
                     "verdict_breakdown": {
                         "confirmed": confirmed_count,
                         "suspicious": suspicious_count,
@@ -132,3 +144,45 @@ class SummaryStage(BaseStage):
                 success=False,
                 error=str(exc),
             )
+
+    @staticmethod
+    def _build_analyzer_info(analyzer_metadata: dict) -> dict:
+        """
+        Convert analyzer_metadata (dict keyed by analyzer name) to the
+        legacy analyzer_info format expected by old API endpoints.
+
+        Args:
+            analyzer_metadata: Dict of {analyzer_name: {language, finding_count, ...}}
+
+        Returns:
+            Dict with keys: analyzer_runs, analyzer_errors, skipped_languages
+        """
+        analyzer_runs = []
+        analyzer_errors = []
+        skipped_languages = []
+
+        for name, info in analyzer_metadata.items():
+            if isinstance(info, dict):
+                if "error" in info:
+                    analyzer_errors.append({
+                        "analyzer": name,
+                        "analyzer_name": name,
+                        "success": False,
+                        "error": info["error"],
+                        "language": info.get("language"),
+                    })
+                else:
+                    analyzer_runs.append({
+                        "analyzer": name,
+                        "analyzer_name": name,
+                        "success": True,
+                        "language": info.get("language"),
+                        "finding_count": info.get("finding_count", 0),
+                        "units_analyzed": info.get("units_analyzed", 0),
+                    })
+
+        return {
+            "analyzer_runs": analyzer_runs,
+            "analyzer_errors": analyzer_errors,
+            "skipped_languages": skipped_languages,
+        }

@@ -1,65 +1,97 @@
 """
-Built-in agent registration entry point (aggregator).
+Built-in agent registration entry point (auto-discovery aggregator).
 
-This module aggregates all agent subdirectory registrations into a single
-entry point. Each agent type has its own register.py in its subdirectory,
-and this module simply calls each subdirectory's register_agents() function.
+This module automatically discovers and registers agents from subdirectories
+under agents/. Each subdirectory that contains a register.py with a
+register_agents(registry) function will be automatically loaded.
 
 To add a new agent:
 1. Create a subdirectory under agents/ (e.g., agents/my_agent/)
 2. Create register.py with a register_agents(registry) function
-3. Import and call it in this file's register_builtin_agents()
+3. That's it — no need to modify this file
 
-This design reduces merge conflicts when multiple team members add agents
-in parallel — each member only modifies their own subdirectory.
+This design eliminates merge conflicts when multiple team members add
+agents in parallel — each member only modifies their own subdirectory.
 
 Team Member Assignment: All members can add agents independently
 """
 
 from __future__ import annotations
 
+import importlib
+import logging
+from pathlib import Path
+
 from agents.registry import AgentRegistry
+
+logger = logging.getLogger(__name__)
+
+# Directory containing this file (agents/)
+_AGENTS_DIR = Path(__file__).resolve().parent
+
+
+def _discover_agent_subdirs() -> list[Path]:
+    """
+    Discover agent subdirectories under agents/.
+
+    Returns sorted list of subdirectory paths that may contain register.py.
+    Skips __pycache__, directories starting with _, and non-directories.
+    """
+    subdirs: list[Path] = []
+    if not _AGENTS_DIR.is_dir():
+        return subdirs
+
+    for child in sorted(_AGENTS_DIR.iterdir()):
+        if not child.is_dir():
+            continue
+        # Skip private/cache directories
+        if child.name.startswith("_") or child.name == "__pycache__":
+            continue
+        subdirs.append(child)
+
+    return subdirs
 
 
 def register_builtin_agents(registry: AgentRegistry) -> None:
     """
-    Register all built-in agents into the given registry.
+    Automatically discover and register all built-in agents.
 
-    This function aggregates registrations from each agent subdirectory.
-    Each subdirectory provides its own register_agents() function.
+    Scans each subdirectory under agents/ for a register.py module.
+    If the module exports a register_agents(registry) function, it is called.
 
-    Currently registered agents:
-    - recon: agents/recon/register.py -> ReconAgent
-    - analysis: agents/analysis/register.py -> AnalysisAgent
-    - judge: agents/judge/register.py -> JudgeAgent
+    Errors in individual agent registrations are logged but do not prevent
+    other agents from being registered.
 
     Args:
         registry: The AgentRegistry instance to populate.
     """
-    # Import and call each subdirectory's registration function
-    # Each import is in a separate try block to allow partial loading
+    subdirs = _discover_agent_subdirs()
 
-    try:
-        from agents.recon.register import register_agents as register_recon
-        register_recon(registry)
-    except ImportError:
-        pass  # ReconAgent not available
+    for subdir in subdirs:
+        register_path = subdir / "register.py"
+        if not register_path.exists():
+            continue
 
-    try:
-        from agents.analysis.register import register_agents as register_analysis
-        register_analysis(registry)
-    except ImportError:
-        pass  # AnalysisAgent not available
+        # Build module name: agents.<subdir_name>.register
+        module_name = f"agents.{subdir.name}.register"
 
-    try:
-        from agents.judge.register import register_agents as register_judge
-        register_judge(registry)
-    except ImportError:
-        pass  # JudgeAgent not available
+        try:
+            module = importlib.import_module(module_name)
 
-    # Add new agent registrations here:
-    # try:
-    #     from agents.my_agent.register import register_agents as register_my_agent
-    #     register_my_agent(registry)
-    # except ImportError:
-    #     pass
+            if not hasattr(module, "register_agents"):
+                logger.debug(
+                    "Skipping %s: no register_agents function found",
+                    module_name,
+                )
+                continue
+
+            module.register_agents(registry)
+            logger.debug("Registered agents from %s", module_name)
+
+        except Exception as exc:
+            logger.warning(
+                "Failed to register agents from %s: %s",
+                module_name,
+                exc,
+            )
+            # Continue with other subdirectories
