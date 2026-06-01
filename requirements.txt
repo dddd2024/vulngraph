@@ -11,5 +11,5 @@ pyyaml>=6.0
 jsonschema>=4.0
 referencing>=0.30
 # 多语言代码解析
-tree-sitter==0.21.0
-tree-sitter-languages==1.8.0
+tree-sitter>=0.22.0
+tree-sitter-languages>=1.8.0

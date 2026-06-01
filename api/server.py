@@ -18,7 +18,7 @@ from fastapi import FastAPI
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from api.routes import agents, evidence, findings, report, scan, scans
+from api.routes import agents, evidence, findings, findings_filter, report, scan, scans, sessions, stats
 
 app = FastAPI(title="VulnPatch - Security Audit Platform")
 
@@ -37,7 +37,10 @@ app.include_router(findings.router)   # GET  /findings
 app.include_router(evidence.router)   # GET  /evidence
 app.include_router(agents.router)     # GET  /agents/logs
 app.include_router(report.router)     # GET  /report/json, /report/markdown, /report/html
-app.include_router(scans.router)      # GET  /scans/{scan_id}/findings, /scans/{scan_id}/evidence, etc.
+app.include_router(scans.router)      # GET /scans/{scan_id}/findings, /scans/{scan_id}/evidence, etc.
+app.include_router(sessions.router)   # GET  /scans (list), DELETE /scans/{scan_id}
+app.include_router(stats.router)      # GET  /stats
+app.include_router(findings_filter.router)  # GET  /findings/filter
 
 # ---------------------------------------------------------------------------
 # Root-level routes (minimal)
