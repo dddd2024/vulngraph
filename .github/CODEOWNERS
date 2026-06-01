@@ -8,49 +8,91 @@
 # - @api-ui-owner: API, UI & Report (api/, report/, ui/)
 #
 # ⚠️ 重要：@core-owner/@analyzer-owner/@agent-owner/@api-ui-owner 是占位符！
-#    使用前必须替换为真实的 GitHub 用户名或 GitHub Team。
+#    使用前必须替换为真实的 GitHub 用户名或 GitHub Team，否则 GitHub 不会自动分配 code owner。
+#    替换示例：将 @core-owner 替换为 @actual_username
 #
-# 公共契约需要全员审查。
 
-# 公共契约 - 全员审查
-/audit_core/models.py                    @core-owner @analyzer-owner @agent-owner @api-ui-owner
-/contracts/                              @core-owner @analyzer-owner @agent-owner @api-ui-owner
-/governance/public_contracts.yaml        @core-owner @analyzer-owner @agent-owner @api-ui-owner
-/governance/module_boundaries.yaml       @core-owner @analyzer-owner @agent-owner @api-ui-owner
-
+# ============================================
 # @core-owner: Core & Orchestrator
+# ============================================
 /audit_core/                             @core-owner
 /ingest/                                 @core-owner
 /governance/                             @core-owner
 /contracts/                              @core-owner
-/AGENTS.md                               @core-owner
-/ARCHITECTURE.md                         @core-owner
-/AI_COLLABORATION.md                     @core-owner
 /TASKS/                                  @core-owner
 
+# ============================================
 # @analyzer-owner: Analyzer & Taint
+# ============================================
 /analyzers/                              @analyzer-owner
 
+# ============================================
 # @agent-owner: Agent & Knowledge
+# ============================================
 /agents/                                 @agent-owner
 /evidence/                               @agent-owner
 /knowledge/                              @agent-owner
 
+# ============================================
 # @api-ui-owner: API, UI & Report
+# ============================================
 /api/                                    @api-ui-owner
 /report/                                 @api-ui-owner
 /ui/                                     @api-ui-owner
 
-# 测试 - 按对应模块审查
+# ============================================
+# 测试目录 - 按对应模块审查
+# ============================================
 /tests/test_core/                        @core-owner
 /tests/test_ingest/                      @core-owner
 /tests/test_analyzers/                   @analyzer-owner
 /tests/test_agents/                      @agent-owner
-/tests/test_evidence/                   @agent-owner
-/tests/test_knowledge/                  @agent-owner
+/tests/test_evidence/                    @agent-owner
+/tests/test_knowledge/                   @agent-owner
 /tests/test_api/                         @api-ui-owner
 /tests/test_report/                      @api-ui-owner
 /tests/contracts/                        @core-owner @analyzer-owner @agent-owner @api-ui-owner
 
+# ============================================
+# 根目录旧测试文件 - 按对应模块审查
+# ============================================
+/tests/test_audit_core.py                @core-owner
+/tests/test_ingest.py                    @core-owner
+/tests/test_python_analyzer.py           @analyzer-owner
+/tests/test_js_analyzer.py               @analyzer-owner
+/tests/test_java_analyzer.py             @analyzer-owner
+/tests/test_c_cpp_analyzer.py            @analyzer-owner
+/tests/test_llm_client_rule_mode.py      @agent-owner
+/tests/test_knowledge_graph.py           @agent-owner
+/tests/test_recon_agent.py               @agent-owner
+/tests/test_analysis_agent_with_mock_llm.py @agent-owner
+/tests/test_evidence_builder.py          @agent-owner
+/tests/test_scan_api.py                  @api-ui-owner
+
+# ============================================
 # CI/CD - @core-owner 负责
+# ============================================
 /.github/                                @core-owner
+
+# ============================================
+# 公共契约规则 - 必须放在文件底部
+# ============================================
+# ⚠️ 重要：CODEOWNERS 采用最后匹配规则优先（last match wins）策略。
+#    因此公共契约规则必须放在文件底部，才能覆盖前面的目录规则。
+#    例如：/audit_core/ 规则在前，/audit_core/models.py 规则在后，
+#    后者会生效，确保 models.py 被分配给所有 owner 审查。
+
+# 核心数据模型
+/audit_core/models.py                    @core-owner @analyzer-owner @agent-owner @api-ui-owner
+
+# 契约定义
+/contracts/                              @core-owner @analyzer-owner @agent-owner @api-ui-owner
+
+# 治理文件
+/governance/public_contracts.yaml        @core-owner @analyzer-owner @agent-owner @api-ui-owner
+/governance/module_boundaries.yaml       @core-owner @analyzer-owner @agent-owner @api-ui-owner
+
+# 架构文档
+/AGENTS.md                               @core-owner @analyzer-owner @agent-owner @api-ui-owner
+/ARCHITECTURE.md                         @core-owner @analyzer-owner @agent-owner @api-ui-owner
+/AI_COLLABORATION.md                     @core-owner @analyzer-owner @agent-owner @api-ui-owner
